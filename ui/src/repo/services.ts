@@ -64,11 +64,13 @@ export const contentSize = (c: DiffContentsPayload) =>
 export function createServices(repo: number): RepoServices {
   let remotes: Promise<RemotePayload[]> | undefined;
   let snapshot: RemotePayload[] | null = null;
+  // A neighbour's prefetch leaves out a large preview's bytes (`loadContents`).
+  const contents: Loader<DiffContentsPayload> = new Loader((k) => loadContents(repo, JSON.parse(k) as ContentsRequest, () => contents.prefetching(k)), new Lru(CONTENT_CACHE_ENTRIES, CONTENT_CACHE_BYTES, contentSize), 4, (k) => !isMutableKey(k));
   return {
     details: new Loader((id) => api.commitDetails(repo, id), new Lru(256)),
     files: new Loader((k) => api.fileList(repo, JSON.parse(k) as DiffSpec), new Lru(128), 4, (k) => !isMutableKey(k)),
     wip: new WipLists((spec) => api.fileList(repo, spec)),
-    contents: new Loader((k) => loadContents(repo, JSON.parse(k) as ContentsRequest), new Lru(CONTENT_CACHE_ENTRIES, CONTENT_CACHE_BYTES, contentSize), 4, (k) => !isMutableKey(k)),
+    contents,
     // One reserve slot: the selected commit's check never waits behind its neighbours' prefetches.
     signature: new Loader((id) => api.signature(repo, id), new Lru(512), 2, () => true, 1),
     avatars: { request: (email, name) => avatars.request(email, repo, name), prefetchOne: (email, name) => avatars.prefetchOne(email, repo, name) },

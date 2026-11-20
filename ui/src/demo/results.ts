@@ -134,6 +134,7 @@ export interface DemoResults {
   mergeBase: string | null;
   lastPush: LastPushPayload | null;
   fileHistory: FileHistoryPage;
+  fileHistoryClose: null;
   blame: BlamePayload;
   integratePreview: IntegratePreviewPayload;
   commandLog: CommandLogEntry[];

@@ -454,6 +454,9 @@ export const api = {
   /** One page of `path`'s history from `rev` (null: the worktree's HEAD), newest first. */
   fileHistory: (repo: number, worktree: string, path: string, rev: string | null, skip: number, limit: number) =>
     call<FileHistoryPage>({ method: 'fileHistory', params: { repo, worktree, path, rev: rev ?? undefined, skip, limit } }),
+  /** The File History opened with these arguments closed: the core stops its walk. */
+  fileHistoryClose: (repo: number, worktree: string, path: string, rev: string | null) =>
+    call<null>({ method: 'fileHistoryClose', params: { repo, worktree, path, rev: rev ?? undefined } }),
   /** `path` at `rev`, line by line. */
   blame: (repo: number, worktree: string, rev: string, path: string) => call<BlamePayload>({ method: 'blame', params: { repo, worktree, rev, path } }),
   /** Restore `path` as in `sha` into the working tree, unstaged; `confirm` after "replace your changes?". */

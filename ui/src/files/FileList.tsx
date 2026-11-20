@@ -29,6 +29,8 @@ import { StatusIcon } from './StatusIcon';
 import { LfsMark } from '../lfs/LfsMark';
 import { createFileCtx, createFileRow, useCreateFileInput } from './createFile';
 import { CreateFileInput } from './CreateFileInput';
+import { worthPrefetching } from './prefetch';
+import { preloadFirstDiff } from '../repo/LazyDiffPanel';
 import { tabIdOf } from '../app/tabStores';
 import type { MenuRow } from '../menu/types';
 import { submoduleStateText } from '../submodules/labels';
@@ -253,6 +255,8 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
   const services = useRepoView((s) => s.services);
   const graph = useRepoView((s) => s.graph);
   useEffect(() => warmFileMenu(services, graph), [services, graph]);
+  const hasFiles = list.files.length > 0;
+  useEffect(() => { if (hasFiles) preloadFirstDiff(); }, [hasFiles]);
   const tree = useTreePaths(allFilesWanted ? allFilesCommit : null, allFilesWorktree ? list : undefined);
   const paths = tree.paths;
   // The layout switches only once the full tree is here: until then the previous list stays
@@ -317,10 +321,11 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
   const open = (index: number, among: FileRow[] = rows) => {
     const row = among[index];
     if (row?.kind !== 'file') return;
+    // The files ↑/↓ would open next, fetched ahead unless they're heavy (`worthPrefetching`).
     const near = (step: 1 | -1): DiffTarget | null => {
       for (let j = index + step; j >= 0 && j < among.length; j += step) {
         const r = among[j];
-        if (r.kind === 'file') return r.target;
+        if (r.kind === 'file') return worthPrefetching(r.target, r.change) ? r.target : null;
       }
       return null;
     };

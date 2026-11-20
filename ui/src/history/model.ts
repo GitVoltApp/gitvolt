@@ -38,7 +38,7 @@ export const selectedRow = (s: HistoryState): FileHistoryRow | null => s.rows.fi
 
 /** The list's end ("Added in <sha>", then "End of history"), once the last page is
  * in; `addedIn` when the oldest row added the file. */
-export function historyEnd(s: HistoryState): { addedIn: string | null } | null {
+export function historyEnd(s: Pick<HistoryState, 'rows' | 'more' | 'loading' | 'error'>): { addedIn: string | null } | null {
   if (s.more || s.loading || s.error) return null;
   const last = s.rows.at(-1);
   return { addedIn: last?.status === 'A' ? last.sha : null };

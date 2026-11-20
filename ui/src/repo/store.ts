@@ -12,6 +12,7 @@ import type { GraphPayload } from '../api/gen/GraphPayload';
 import { keepEditorPlace } from '../diff/editorRelease';
 import { reuseUnchanged } from '../graph/reuse';
 import type { DiffLine } from '../diff/monaco/host';
+import { worthPrefetching } from '../files/prefetch';
 import { perf } from '../perf';
 import { contentKey, filesKey, isMutableKey, type RepoServices } from './services';
 import { wipKey } from './wipLists';
@@ -549,11 +550,12 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
         if (!stillOpen()) return;
         get().leaveThen(() => {
           if (!stillOpen()) return;
-          const targets = list?.files.map((f) => targetFor(f, spec)) ?? [];
+          const files = list?.files ?? [];
+          const targets = files.map((f) => targetFor(f, spec));
           const i = targets.findIndex((t) => sameFile(t, open));
           if (i < 0) return set({ diff: null });
           keepEditorPlace();
-          state.openFile({ ...targets[i], view: open.view }, targets.slice(i + 1, i + 2));
+          state.openFile({ ...targets[i], view: open.view }, targets.slice(i + 1, i + 2).filter((t) => worthPrefetching(t, files[i + 1])));
         });
       };
       services.files.get(filesKey(spec)).then(settle, () => settle(null));
@@ -575,7 +577,7 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
         if (!stillOpen()) return;
         const i = list.files.findIndex((f) => f.path === reopen.path || (reopen.oldPath !== null && f.path === reopen.oldPath && f.oldPath === reopen.path));
         if (i < 0) set({ diff: null });
-        else get().openFile({ ...targetFor(list.files[i], spec), view: reopen.view }, list.files.slice(i + 1, i + 2).map((f) => targetFor(f, spec)));
+        else get().openFile({ ...targetFor(list.files[i], spec), view: reopen.view }, list.files.slice(i + 1, i + 2).map((f) => targetFor(f, spec)).filter((t) => worthPrefetching(t, list.files[i + 1])));
       }, () => { if (stillOpen()) set({ diff: null }); });
     }
 
@@ -836,7 +838,7 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
         set({ diff: target });
         // Worktree-side contents are never cached: prefetching one would
         // be a read whose result is thrown away.
-        services.contents.prefetch(neighbours.map((n) => contentKey(contentsRequest(n))).filter((k) => !isMutableKey(k)));
+        services.contents.prefetch(neighbours.filter((n) => worthPrefetching(n)).map((n) => contentKey(contentsRequest(n))).filter((k) => !isMutableKey(k)));
         if (get().stickyHistory) stickyOpener?.(storeApi, target);
       },
 
@@ -853,7 +855,7 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
             if (mySeq !== seq) return;
             if (list.files.length === 0) return step(i + 1);
             const targets = order(list.files, section.spec);
-            get().openFile(targets[0], targets.slice(1, 2));
+            get().openFile(targets[0], targets.slice(1, 2).filter((t) => worthPrefetching(t, list.files.find((f) => f.path === t.path))));
             requestFocus('files');
           };
           if (section.list.status === 'ready') use(section.list.data);

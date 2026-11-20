@@ -10,7 +10,11 @@ export const IMAGE_MIME: Record<string, string> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', avif: 'image/avif', bmp: 'image/bmp', ico: 'image/x-icon', svg: 'image/svg+xml',
 };
 
+/** The bytes of a base64 payload: natively (`Uint8Array.fromBase64`, in Chromium since 140, about
+ * 4× faster than the loop on a 5 MB side) where the engine has it, else through `atob`. */
 export function base64Bytes(base64: string): Uint8Array<ArrayBuffer> {
+  const native = (Uint8Array as unknown as { fromBase64?: (s: string) => Uint8Array<ArrayBuffer> }).fromBase64;
+  if (native) return native(base64);
   const bin = atob(base64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);

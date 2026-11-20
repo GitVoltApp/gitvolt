@@ -39,6 +39,40 @@ describe('the blame gutter', () => {
     expect(groups.map((g) => g.dataset.line)).toEqual(['1', '3', '5']);
   });
 
+  it('a scroll moves the strip without rendering, until the lines on screen leave the rendered window', () => {
+    // 2,000 one-line groups, alternating commits; 30 lines on screen.
+    const many: BlamePayload = { ...blame, hunks: Array.from({ length: 2000 }, (_, i) => ({ sha: i % 2 ? b : a, start: i + 1, lines: 1 })) };
+    const node = document.createElement('div');
+    document.body.appendChild(node);
+    let scrollTop = 0;
+    const listeners = new Set<() => void>();
+    const margin: FileMargin = {
+      node,
+      lineTop: (n) => (n - 1) * 19 - scrollTop,
+      lineBottom: (n) => n * 19 - scrollTop,
+      visibleLines: () => ({ first: Math.floor(scrollTop / 19) + 1, last: Math.floor(scrollTop / 19) + 30 }),
+      metrics: () => ({ lineHeight: 19, fontSize: 13 }),
+      onChange: (cb) => { listeners.add(cb); return () => { listeners.delete(cb); }; },
+    };
+    const scroll = (y: number) => act(() => { scrollTop = y; for (const l of listeners) l(); });
+    render(<BlameGutter host={{ setFileMargin: (w: number) => (w > 0 ? margin : null) } as never} blame={many} onPick={vi.fn()} />);
+    const strip = () => node.querySelector<HTMLElement>('.blame-strip')!;
+    const lines = () => screen.getAllByTestId('blame-group').map((g) => Number(g.dataset.line));
+    // Line 1 to a screen (at least 40 lines) past the last one on screen.
+    expect([lines()[0], lines().at(-1)]).toEqual([1, 70]);
+    const first = screen.getAllByTestId('blame-group')[10];
+    scroll(19 * 20);
+    expect(strip().style.transform).toBe('translateY(-380px)');
+    expect(screen.getAllByTestId('blame-group')[10]).toBe(first);
+    expect([lines()[0], lines().at(-1)]).toEqual([1, 70]);
+    // Offsets are from line 1: the strip's transform places them.
+    expect(first.style.top).toBe('190px');
+    scroll(19 * 1000);
+    expect(strip().style.transform).toBe('translateY(-19000px)');
+    expect([lines()[0], lines().at(-1)]).toEqual([961, 1070]);
+    expect(screen.getAllByTestId('blame-group')[0].style.top).toBe(`${960 * 19}px`);
+  });
+
   it('rows take Monaco\'s line box and font size (one baseline with the code)', () => {
     const host = fakeHost();
     render(<BlameGutter host={host as never} blame={blame} onPick={vi.fn()} />);

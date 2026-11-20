@@ -230,6 +230,23 @@ describe('repo view store', () => {
     expect(contents[0]).toContain('"path":"b.txt"');
   });
 
+  it('prefetches no heavy neighbour: an image, a PDF, media, a binary or a change over 2,000 lines', async () => {
+    const { services, resolve, calls } = fakeServices();
+    const s = createRepoViewStore(1, '/r', graph, services);
+    const spec = { kind: 'commit' as const, id: A, parent: 0 };
+    const file = (path: string, additions: number | null) => ({ path, oldPath: null, status: 'M', additions, deletions: additions === null ? null : 0, old: { kind: 'object' as const, oid: B }, new: { kind: 'object' as const, oid: C }, submodule: false });
+    const t = (path: string) => targetFor(file(path, 1), spec);
+    s.getState().openFile(t('a.txt'), [t('shot.png'), t('manual.pdf'), t('clip.mp4'), t('b.txt')]);
+    expect(calls.filter((c) => c.startsWith('contents '))).toEqual([expect.stringContaining('"path":"b.txt"')]);
+    s.getState().selectRow(1);
+    resolve(`files ${JSON.stringify(spec)}`, { files: [file('a.txt', 1), file('big.txt', 2001)], added: 2002, deleted: 0 });
+    await flush();
+    calls.length = 0;
+    s.getState().openFirstFile();
+    expect(s.getState().diff?.path).toBe('a.txt');
+    expect(calls.filter((c) => c.startsWith('contents '))).toEqual([]);
+  });
+
   it('never prefetches worktree-side contents: they are never cached, so the read would be wasted', () => {
     const { services, calls } = fakeServices();
     const s = createRepoViewStore(1, '/r', graph, services);

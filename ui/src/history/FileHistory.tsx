@@ -1,7 +1,8 @@
 // Reached only through the center view's React.lazy (history/feature.ts): it pulls in File View,
 // the Monaco loader and Shiki's language registry, which stay out of the startup chunk.
 import { X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { useStore, type StoreApi } from 'zustand';
 import { api } from '../api/client';
 import { copyText } from '../api/transport';
@@ -93,6 +94,9 @@ export function FileHistory({ tabId, props, close }: CenterViewProps<FileHistory
     void store.getState().seek(sha).then((found) => { if (!found) useToast.getState().show(`${shortSha(sha)} isn't in this file's history`); });
   }, [close, store, tabId]);
   useEffect(() => { void store.getState().loadMore(); }, [store]);
+  // The core reads the pages from one `git log` walk: closed (or hidden), the view lets it go. A
+  // page asked for later walks again.
+  useEffect(() => () => { api.fileHistoryClose(props.repoId, props.worktree, props.path, props.rev).catch(() => {}); }, [props.repoId, props.worktree, props.path, props.rev]);
   // The tab's sticky mode follows the Blame toggle: the next file opens as this was left.
   useEffect(() => store.subscribe((s, prev) => {
     const tab = tabStore(tabId)?.getState();
@@ -151,10 +155,42 @@ function copySha(e: MouseEvent, sha: string) {
   copyText(sha).then(() => toast('Copied'), () => toast('Copy failed'));
 }
 
+/** A commit row's height: two lines (the summary, then the date and author) and the padding. */
+export const FH_ROW_H = 42;
+
+/** One commit of the list: memoized, so a step re-renders the two rows whose selection changed. */
+const HistoryRow = memo(function HistoryRow({ row, selected, top, onSelect }: { row: FileHistoryRow; selected: boolean; top: number; onSelect: (sha: string) => void }) {
+  return (
+    <li id={`fh-${row.sha}`} data-sha={row.sha} role="option" aria-selected={selected} className="file-history-row" style={{ transform: `translateY(${top}px)` }} onClick={() => onSelect(row.sha)}>
+      <Avatar name={row.author} email={row.email} size={20} />
+      <span className="fh-summary">{row.summary}</span>
+      <HoverTooltip content={`Copy ${row.sha}`}>
+        <button type="button" tabIndex={-1} className="fh-sha" aria-label={`Copy ${row.sha}`} onMouseDown={(e) => e.preventDefault()} onClick={(e) => copySha(e, row.sha)}>{shortSha(row.sha)}</button>
+      </HoverTooltip>
+      <span className="fh-meta">{relativeTime(row.time)} · {row.author}</span>
+    </li>
+  );
+});
+
+/** The commits, virtualized: only the rows on screen (and a few around them) are in the DOM, so
+ * a long history's steps and pages cost what a short one's do. */
 function HistoryList({ store, path, follow }: { store: StoreApi<HistoryStore>; path: string; follow: boolean }) {
-  const s = useStore(store);
-  const end = historyEnd(s);
+  const rows = useStore(store, (s) => s.rows);
+  const selected = useStore(store, (s) => s.selected);
+  const more = useStore(store, (s) => s.more);
+  const loading = useStore(store, (s) => s.loading);
+  const error = useStore(store, (s) => s.error);
+  const end = historyEnd({ rows, more, loading, error });
+  const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const selectedIndex = useMemo(() => (selected === null ? -1 : rows.findIndex((r) => r.sha === selected)), [rows, selected]);
+  // The selected row is always rendered, scrolled off or not: it's the listbox's active descendant.
+  const rangeExtractor = useCallback((range: Range) => {
+    const out = defaultRangeExtractor(range);
+    return selectedIndex < 0 || out.includes(selectedIndex) ? out : [...out, selectedIndex].sort((a, b) => a - b);
+  }, [selectedIndex]);
+  const v = useVirtualizer({ count: rows.length, getScrollElement: () => scrollRef.current, estimateSize: () => FH_ROW_H, overscan: 10, rangeExtractor, initialRect: { width: 360, height: 600 } });
+  const onSelect = useCallback((sha: string) => store.getState().select(sha), [store]);
   // The keyboard moves in with the view: from the diff toolbar's History (whose mousedown keeps
   // focus in the file list, where ↓ would open the next file over the view), a menu or the
   // palette. Effects re-run when the view shows again (`<Activity>`), so a file peeked over it
@@ -165,39 +201,34 @@ function HistoryList({ store, path, follow }: { store: StoreApi<HistoryStore>; p
     if (follow && document.activeElement?.closest('.file-list')) return;
     listRef.current?.focus({ preventScroll: true });
   }, [follow]);
-  useEffect(() => {
-    if (s.selected) listRef.current?.querySelector<HTMLElement>(`[data-sha="${s.selected}"]`)?.scrollIntoView?.({ block: 'nearest' });
-  }, [s.selected]);
+  // The selection in view, from ↑/↓ or a blame click that loaded pages until it showed.
+  useLayoutEffect(() => {
+    if (selectedIndex >= 0) v.scrollToIndex(selectedIndex, { align: 'auto' });
+  }, [selectedIndex, v]);
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
     e.preventDefault();
     store.getState().step(e.key === 'ArrowDown' ? 1 : -1);
   };
   return (
-    <div className="file-history-list">
-      <ul ref={listRef} role="listbox" aria-label="Commits" tabIndex={0} onKeyDown={onKeyDown} aria-activedescendant={s.selected ? `fh-${s.selected}` : undefined}>
-        {s.rows.map((r) => (
-          <li key={r.sha} id={`fh-${r.sha}`} data-sha={r.sha} role="option" aria-selected={r.sha === s.selected} className="file-history-row" onClick={() => store.getState().select(r.sha)}>
-            <Avatar name={r.author} email={r.email} size={20} />
-            <span className="fh-summary">{r.summary}</span>
-            <HoverTooltip content={`Copy ${r.sha}`}>
-              <button type="button" tabIndex={-1} className="fh-sha" aria-label={`Copy ${r.sha}`} onMouseDown={(e) => e.preventDefault()} onClick={(e) => copySha(e, r.sha)}>{shortSha(r.sha)}</button>
-            </HoverTooltip>
-            <span className="fh-meta">{relativeTime(r.time)} · {r.author}</span>
-          </li>
-        ))}
+    <div ref={scrollRef} className="file-history-list">
+      <ul ref={listRef} role="listbox" aria-label="Commits" tabIndex={0} onKeyDown={onKeyDown} aria-activedescendant={selected ? `fh-${selected}` : undefined} style={{ height: v.getTotalSize(), '--fh-row': `${FH_ROW_H}px` } as CSSProperties}>
+        {v.getVirtualItems().map((item) => {
+          const r = rows[item.index];
+          return <HistoryRow key={r.sha} row={r} selected={r.sha === selected} top={item.start} onSelect={onSelect} />;
+        })}
       </ul>
-      {s.error && (
+      {error && (
         <div role="alert" className="file-history-note">
-          Couldn't load the history: {s.error} <button type="button" className="inline-retry" onClick={() => void store.getState().loadMore()}>Retry</button>
+          Couldn't load the history: {error} <button type="button" className="inline-retry" onClick={() => void store.getState().loadMore()}>Retry</button>
         </div>
       )}
-      {s.more && !s.error && (
-        <button type="button" className="file-history-more" disabled={s.loading} onClick={() => void store.getState().loadMore()}>{s.loading ? 'Loading…' : 'Load more'}</button>
+      {more && !error && (
+        <button type="button" className="file-history-more" disabled={loading} onClick={() => void store.getState().loadMore()}>{loading ? 'Loading…' : 'Load more'}</button>
       )}
       {end && (
         <div className="file-history-end">
-          {s.rows.length === 0 && <div>No commit changed {path}</div>}
+          {rows.length === 0 && <div>No commit changed {path}</div>}
           {end.addedIn && (
             <div>
               Added in{' '}

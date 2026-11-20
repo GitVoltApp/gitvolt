@@ -4,7 +4,8 @@ import type { DiffContentsPayload } from '../api/gen/DiffContentsPayload';
 
 const api = vi.hoisted(() => ({ diffContents: vi.fn(), hexDump: vi.fn(), blobBytes: vi.fn() }));
 vi.mock('../api/client', async (actual) => ({ ...(await actual<typeof import('../api/client')>()), api }));
-const { bytesOf, hexOf, hexSize, loadContents } = await import('./hexContents');
+const { bytesOf, hexOf, hexSize, loadContents, PREFETCH_RAW_MAX } = await import('./hexContents');
+const { DroppedError } = await import('../data/loader');
 
 const side = (binary: boolean): BlobPayload => ({ size: 4, binary, encoding: '', eol: 'none', text: binary ? null : 'x', hash: null });
 const payload = (extra: Partial<DiffContentsPayload>): DiffContentsPayload => ({ old: side(true), new: side(true), tooLarge: false, eolOnly: false, image: false, ...extra });
@@ -12,6 +13,23 @@ const req = { path: 'a.bin', old: { kind: 'absent' as const }, new: { kind: 'abs
 const hex = { old: { size: 4, shown: 4, dump: 'ab' }, new: null, cap: 262144 };
 
 describe('loadContents', () => {
+  it('a prefetch reads raw sides only up to PREFETCH_RAW_MAX in all; an open, or a prefetch an open joined, reads them whatever their size', async () => {
+    const raw = (size: number) => ({ ...side(true), size, raw: true });
+    api.blobBytes.mockReset().mockResolvedValue(new Uint8Array(1));
+    api.diffContents.mockResolvedValueOnce(payload({ image: true, old: raw(PREFETCH_RAW_MAX / 2), new: raw(PREFETCH_RAW_MAX / 2 + 1) }));
+    await expect(loadContents(1, req, () => true)).rejects.toBeInstanceOf(DroppedError);
+    expect(api.blobBytes).not.toHaveBeenCalled();
+    api.diffContents.mockResolvedValueOnce(payload({ image: true, old: null, new: raw(PREFETCH_RAW_MAX) }));
+    expect(bytesOf((await loadContents(1, req, () => true)).new)).toHaveLength(1);
+    api.diffContents.mockResolvedValueOnce(payload({ image: true, old: null, new: raw(16 << 20) }));
+    expect(bytesOf((await loadContents(1, req)).new)).toHaveLength(1);
+    let prefetching = true;
+    api.diffContents.mockImplementationOnce(async () => { prefetching = false; return payload({ image: true, old: null, new: raw(16 << 20) }); });
+    expect(bytesOf((await loadContents(1, req, () => prefetching)).new)).toHaveLength(1);
+    api.blobBytes.mockReset();
+  });
+
+
   it('loads a binary\'s hex dumps with its contents; not a text file\'s, an image\'s or a large file\'s', async () => {
     api.hexDump.mockResolvedValue(hex);
     api.diffContents.mockResolvedValueOnce(payload({}));

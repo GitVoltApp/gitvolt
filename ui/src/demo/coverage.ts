@@ -146,6 +146,7 @@ export const COVERAGE = {
   stashDrop: 'real',
   reset: 'real',
   fileHistory: 'real',
+  fileHistoryClose: 'real',
   blame: 'real',
   restoreFile: 'real',
   lfsStatus: 'real',

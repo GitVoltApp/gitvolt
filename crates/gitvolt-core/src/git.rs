@@ -296,6 +296,104 @@ impl GitCli {
         &self.log
     }
 
+    /// The command for `inv`, as `run` starts it. Environment, lowest to highest: the captured
+    /// login-shell env (replacing the inherited one) or the inherited one, `with_env`, the
+    /// invocation's `envs`, the fixed variables below, then `PRIVATE_ENV` removal, then the hook.
+    /// A bare `git` with the login shell's `PATH` would make std fork to search it, which can
+    /// hang the child for good in this process (platform::process module docs): the same command
+    /// again, with the program found here.
+    fn command(&self, bin: &Path, git: bool, inv: &GitInvocation, shell_vars: Option<&EnvVars>, stdin: bool) -> std::process::Command {
+        let mut std_cmd = self.command_for(bin, git, inv, shell_vars, stdin);
+        if let Some(found) = crate::platform::process::spawnable_program(&std_cmd, shell_vars.is_some()) {
+            std_cmd = self.command_for(&found, git, inv, shell_vars, stdin);
+            #[cfg(unix)]
+            std::os::unix::process::CommandExt::arg0(&mut std_cmd, bin);
+        }
+        std_cmd
+    }
+
+    fn command_for(&self, program: &Path, git: bool, inv: &GitInvocation, shell_vars: Option<&EnvVars>, stdin: bool) -> std::process::Command {
+        let mut cmd = std::process::Command::new(program);
+        if let Some(vars) = shell_vars {
+            cmd.env_clear().envs(vars.iter().map(|(k, v)| (k, v)));
+        }
+        // The profile include comes first, so GitVolt's fixed `-c` values after it win.
+        cmd.current_dir(&inv.cwd);
+        if git {
+            cmd.arg("--no-pager");
+            if let Some(inc) = self.include_path() {
+                let mut arg = OsString::from("include.path=");
+                arg.push(&inc);
+                cmd.arg("-c").arg(arg);
+            }
+            cmd.args(["-c", "core.quotepath=false"]).args(&inv.args);
+        } else {
+            // `args[0]` is the program itself, there for the log.
+            cmd.args(&inv.args[1..]);
+        }
+        cmd
+            // A partial clone must never fetch missing objects behind the user's back from a
+            // read (status, log, numstat, the watcher's lists). Network ops override it
+            // (netops.rs), as a clone's checkout needs the lazy fetch.
+            .env("GIT_NO_LAZY_FETCH", "1")
+            .envs(self.env.iter().map(|(k, v)| (k, v)))
+            .envs(inv.envs.iter().map(|(k, v)| (k, v)))
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("LC_ALL", "C");
+        if !inv.write && !inv.refresh {
+            // A read without a refresh permit: no *optional* locks, so the stat refresh
+            // `git status` would write back into `.git/index` stays in memory. Writes and
+            // refreshing reads (`refresh_index`) take git's normal locks.
+            cmd.env("GIT_OPTIONAL_LOCKS", "0");
+        } else {
+            // An inherited `GIT_OPTIONAL_LOCKS=0` (login-shell or process env) must not survive.
+            cmd.env_remove("GIT_OPTIONAL_LOCKS");
+        }
+        cmd.stdin(if stdin { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::piped()).stderr(Stdio::piped());
+        // GitVolt's own environment (openers::PRIVATE_ENV) must never leak into a child, the
+        // same guarantee `openers::launch_command` gives an opener/chooser/URL-open launch, and
+        // regardless of whether a command hook is installed.
+        for var in crate::openers::PRIVATE_ENV {
+            cmd.env_remove(var);
+        }
+        if let Some(hook) = &self.hook {
+            hook(&mut cmd);
+        }
+        cmd
+    }
+
+    /// Starts a read whose stdout is read as it comes ([`GitStream`]), with `run`'s environment,
+    /// process group and command log. Its stdin is `/dev/null`; its timeout, the reader's own.
+    pub async fn stream(&self, inv: GitInvocation) -> Result<GitStream, GbError> {
+        debug_assert!(!inv.write && inv.stdin.is_none(), "a stream is a read with no stdin");
+        let id = self.log.next_id();
+        crate::log::note_command(id);
+        let started = Instant::now();
+        let started_ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+        let shell_vars = match &self.shell_env {
+            Some(shell) => shell.get().await,
+            None => None,
+        };
+        let bin = self.bin.clone();
+        let mut std_cmd = self.command(&bin, true, &inv, shell_vars.as_ref(), false);
+        crate::platform::process::own_group(&mut std_cmd);
+        let mut cmd = tokio::process::Command::from(std_cmd);
+        cmd.kill_on_drop(true);
+        let entry = CommandLogEntry { id, args: inv.args.iter().map(|a| redact(&a.to_string_lossy())).collect(), cwd: inv.cwd.display().to_string(), started_ms, duration_ms: 0, exit_code: None, ok: false, stderr: String::new() };
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                let msg = redact(&format!("{SPAWN_FAILED}git: {e}"));
+                self.log.push(CommandLogEntry { duration_ms: started.elapsed().as_millis() as u64, stderr: truncate_utf8(&msg, STDERR_LOG_LIMIT).to_string(), ..entry });
+                return Err(GbError { kind: GbErrorKind::Io, message: msg.clone(), command_id: Some(id), stderr: Some(msg), detail: None });
+            }
+        };
+        let group = Group::of(&child);
+        let stdout = child.stdout.take().expect("stdout is piped");
+        let stderr = tokio::spawn(read_stderr(child.stderr.take().expect("stderr is piped"), None));
+        Ok(GitStream { child, stdout, stderr: Some(stderr), group, log: self.log.clone(), entry: Some(entry), started })
+    }
+
     pub async fn run(&self, inv: GitInvocation) -> Result<GitOutput, GbError> {
         let bin = self.bin.clone();
         self.run_bin(&bin, true, inv).await
@@ -321,67 +419,7 @@ impl GitCli {
             None => None,
         };
         let input = inv.stdin.take();
-        // Environment, lowest to highest: the captured login-shell env (replacing the inherited
-        // one) or the inherited one, `with_env`, the invocation's `envs`, the fixed variables
-        // below, then `PRIVATE_ENV` removal, then the hook.
-        let build = |program: &Path| {
-            let mut cmd = std::process::Command::new(program);
-            if let Some(vars) = &shell_vars {
-                cmd.env_clear().envs(vars.iter().map(|(k, v)| (k, v)));
-            }
-            // The profile include comes first, so GitVolt's fixed `-c` values after it win.
-            cmd.current_dir(&inv.cwd);
-            if git {
-                cmd.arg("--no-pager");
-                if let Some(inc) = self.include_path() {
-                    let mut arg = OsString::from("include.path=");
-                    arg.push(&inc);
-                    cmd.arg("-c").arg(arg);
-                }
-                cmd.args(["-c", "core.quotepath=false"]).args(&inv.args);
-            } else {
-                // `args[0]` is the program itself, there for the log.
-                cmd.args(&inv.args[1..]);
-            }
-            cmd
-                // A partial clone must never fetch missing objects behind the user's back from a
-                // read (status, log, numstat, the watcher's lists). Network ops override it
-                // (netops.rs), as a clone's checkout needs the lazy fetch.
-                .env("GIT_NO_LAZY_FETCH", "1")
-                .envs(self.env.iter().map(|(k, v)| (k, v)))
-                .envs(inv.envs.iter().map(|(k, v)| (k, v)))
-                .env("GIT_TERMINAL_PROMPT", "0")
-                .env("LC_ALL", "C");
-            if !inv.write && !inv.refresh {
-                // A read without a refresh permit: no *optional* locks, so the stat refresh
-                // `git status` would write back into `.git/index` stays in memory. Writes and
-                // refreshing reads (`refresh_index`) take git's normal locks.
-                cmd.env("GIT_OPTIONAL_LOCKS", "0");
-            } else {
-                // An inherited `GIT_OPTIONAL_LOCKS=0` (login-shell or process env) must not survive.
-                cmd.env_remove("GIT_OPTIONAL_LOCKS");
-            }
-            cmd.stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::piped()).stderr(Stdio::piped());
-            // GitVolt's own environment (openers::PRIVATE_ENV) must never leak into a child, the
-            // same guarantee `openers::launch_command` gives an opener/chooser/URL-open launch, and
-            // regardless of whether a command hook is installed.
-            for var in crate::openers::PRIVATE_ENV {
-                cmd.env_remove(var);
-            }
-            if let Some(hook) = &self.hook {
-                hook(&mut cmd);
-            }
-            cmd
-        };
-        // A bare `git` with the login shell's `PATH` would make std fork to search it, which can
-        // hang the child for good in this process (platform::process module docs): the same
-        // command again, with the program found here.
-        let mut std_cmd = build(bin);
-        if let Some(found) = crate::platform::process::spawnable_program(&std_cmd, shell_vars.is_some()) {
-            std_cmd = build(&found);
-            #[cfg(unix)]
-            std::os::unix::process::CommandExt::arg0(&mut std_cmd, bin);
-        }
+        let mut std_cmd = self.command(bin, git, &inv, shell_vars.as_ref(), input.is_some());
 
         // Its own process group (cancel kills git's children too). A detached command gets its
         // own session instead, whose group it leads (`setsid` fails in a group leader, so it's
@@ -497,16 +535,7 @@ impl GitCli {
                 if status.success() || code.is_some_and(|c| inv.ok_exit.contains(&c)) {
                     (code, stderr.clone(), Ok(GitOutput { stdout: stdout_bytes, stderr: redacted_stderr, command_id: id }))
                 } else {
-                    let kind = classify_stderr(&stderr);
-                    let detail = if kind == GbErrorKind::IndexLocked { index_lock_detail(&stderr) } else { None };
-                    let err = GbError {
-                        kind,
-                        message: signing_failure(&redacted_stderr).or_else(|| first_message_line(&redacted_stderr)).unwrap_or_else(|| format!("git exited with status {}", code.unwrap_or(-1))),
-                        command_id: Some(id),
-                        stderr: Some(redacted_stderr),
-                        detail,
-                    };
-                    (code, stderr, Err(err))
+                    (code, stderr.clone(), Err(exit_error(id, code, &stderr)))
                 }
             }
             Outcome::Done(Err(e)) => (None, e.to_string(), Err(wait_failed(id, &e))),
@@ -533,6 +562,78 @@ impl GitCli {
         let text = String::from_utf8_lossy(&out.stdout);
         let v = parse_version(&text).ok_or_else(|| GbError::other(format!("unrecognized git version: {text}")))?;
         require_min(v)
+    }
+}
+
+/// A failed exit's error: its kind from stderr, its message the first line that says why.
+fn exit_error(id: u64, code: Option<i32>, stderr: &str) -> GbError {
+    let redacted_stderr = redact(stderr);
+    let kind = classify_stderr(stderr);
+    let detail = if kind == GbErrorKind::IndexLocked { index_lock_detail(stderr) } else { None };
+    GbError {
+        kind,
+        message: signing_failure(&redacted_stderr).or_else(|| first_message_line(&redacted_stderr)).unwrap_or_else(|| format!("git exited with status {}", code.unwrap_or(-1))),
+        command_id: Some(id),
+        stderr: Some(redacted_stderr),
+        detail,
+    }
+}
+
+/// A read started by [`GitCli::stream`]: its stdout is read as needed, so git runs ahead of the
+/// reader only as far as the pipe holds, and waits there. Dropped before its end, its process
+/// group is killed. It's in the command log once, when it finishes or is dropped.
+pub struct GitStream {
+    child: tokio::process::Child,
+    stdout: tokio::process::ChildStdout,
+    stderr: Option<tokio::task::JoinHandle<Vec<u8>>>,
+    group: Group,
+    log: Arc<CommandLog>,
+    /// Logged at the end (`None` once it is).
+    entry: Option<CommandLogEntry>,
+    started: Instant,
+}
+
+impl GitStream {
+    /// Up to `buf.len()` bytes of stdout; 0 at its end.
+    pub async fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.stdout.read(buf).await
+    }
+
+    /// Once stdout has ended: git's exit, as `run` reports it (an error if it failed).
+    pub async fn finish(&mut self) -> Result<(), GbError> {
+        let status = match tokio::time::timeout(PIPE_GRACE, self.child.wait()).await {
+            Ok(r) => r,
+            Err(_) => {
+                self.group.kill();
+                self.child.wait().await
+            }
+        };
+        let stderr = match self.stderr.take() {
+            Some(t) => tokio::time::timeout(PIPE_GRACE, t).await.ok().and_then(Result::ok).unwrap_or_default(),
+            None => Vec::new(),
+        };
+        let stderr = String::from_utf8_lossy(&stderr).into_owned();
+        let Some(entry) = self.entry.take() else { return Ok(()) };
+        let id = entry.id;
+        let (code, result) = match status {
+            Ok(st) if st.success() => (st.code(), Ok(())),
+            Ok(st) => (st.code(), Err(exit_error(id, st.code(), &stderr))),
+            Err(e) => (None, Err(wait_failed(id, &e))),
+        };
+        self.log.push(CommandLogEntry { duration_ms: self.started.elapsed().as_millis() as u64, exit_code: code, ok: result.is_ok(), stderr: truncate_utf8(&redact(&stderr), STDERR_LOG_LIMIT).to_string(), ..entry });
+        result
+    }
+}
+
+impl Drop for GitStream {
+    /// Stopped before its end (its reader is done with it): not a failure.
+    fn drop(&mut self) {
+        let Some(entry) = self.entry.take() else { return };
+        self.group.kill();
+        if let Some(t) = self.stderr.take() {
+            t.abort();
+        }
+        self.log.push(CommandLogEntry { duration_ms: self.started.elapsed().as_millis() as u64, ok: true, stderr: "stopped early: its reader was done".into(), ..entry });
     }
 }
 

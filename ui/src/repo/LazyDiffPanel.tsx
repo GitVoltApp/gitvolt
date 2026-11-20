@@ -1,16 +1,47 @@
 import { Component, lazy, Suspense, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { errorMessage } from '../api/client';
+import { loadMonacoHost } from '../diff/monaco/load';
+import { whenIdle } from '../markdown/idle';
 import { useFocusZone } from './focus';
 import { useRepoView, type DiffTarget } from './store';
 import { isWipKey } from './wipLists';
 
 type PanelModule = { default: ComponentType<{ target: DiffTarget; session?: number }> };
 
+/** The panels already in, by loader: rendered as they are, not through `lazy`. Even a lazy()
+ * whose import has resolved suspends once, and React holds a fallback it has shown for 300 ms
+ * at least: most of a preloaded first diff's time. */
+const loaded = new Map<() => Promise<PanelModule>, PanelModule>();
+const kept = (load: () => Promise<PanelModule>, m: PanelModule) => {
+  loaded.set(load, m);
+  return m;
+};
 // Lazy: the diff panel reaches Shiki's language registry and the Monaco loader, which must stay
 // out of the startup chunk (`npm run build` checks it).
-const loadDiffPanel = (): Promise<PanelModule> => import('../diff/DiffPanel').then((m) => ({ default: m.DiffPanel }));
+const loadDiffPanel = (): Promise<PanelModule> => import('../diff/DiffPanel').then((m) => kept(loadDiffPanel, { default: m.DiffPanel }));
 // A conflicted WIP file opens the merge tool in place of the diff (Monaco too).
-const loadMergeTool = (): Promise<PanelModule> => import('../conflicts/MergeTool').then((m) => ({ default: m.MergeToolPanel }));
+const loadMergeTool = (): Promise<PanelModule> => import('../conflicts/MergeTool').then((m) => kept(loadMergeTool, { default: m.MergeToolPanel }));
+
+/** How long the preload waits for an idle moment at most. */
+export const PRELOAD_TIMEOUT_MS = 2000;
+let preloaded = false;
+
+/**
+ * The session's first diff loaded the panel's chunk, Monaco, Shiki and the editor theme as it
+ * opened: about half a second, against 50 ms for the next one (the merge tool's first open, as
+ * long). Once a file list has shown (the first commit's or WIP's files), they load in an idle
+ * moment instead, once per session; a diff opened before then shares the same loads. Nothing in
+ * vitest: a test opts in with `force`.
+ */
+export function preloadFirstDiff(force = false): void {
+  if (preloaded || (import.meta.env.MODE === 'test' && !force)) return;
+  preloaded = true;
+  whenIdle(() => {
+    void loadDiffPanel().catch(() => {});
+    void loadMergeTool().catch(() => {});
+    void loadMonacoHost().catch(() => {});
+  }, PRELOAD_TIMEOUT_MS);
+}
 
 /** A conflicted file of a WIP row (status `U`): the merge tool's, not the diff's. */
 export const isConflictTarget = (t: DiffTarget) => t.status === 'U' && isWipKey(t.key);
@@ -65,8 +96,8 @@ export function LazyDiffPanel({ target, session, load = loadDiffPanel, loadMerge
   const [attempt, setAttempt] = useState(0);
   const merge = isConflictTarget(target);
   // `attempt` is a dependency on purpose: each Retry makes a fresh lazy() that imports again.
-  const Panel = useMemo(() => lazy(load), [load, attempt]);
-  const MergePanel = useMemo(() => lazy(loadMerge), [loadMerge, attempt]);
+  const Panel = useMemo(() => loaded.get(load)?.default ?? lazy(load), [load, attempt]);
+  const MergePanel = useMemo(() => loaded.get(loadMerge)?.default ?? lazy(loadMerge), [loadMerge, attempt]);
   if (merge) {
     return (
       <Boundary

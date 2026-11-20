@@ -13,7 +13,8 @@ import { fakeServices } from '../repo/testServices';
 import { row } from './testRows';
 
 const fileHistory = vi.hoisted(() => vi.fn());
-vi.mock('../api/client', () => ({ api: { fileHistory, avatar: vi.fn(async () => null) }, errorMessage: (e: unknown) => String(e) }));
+const fileHistoryClose = vi.hoisted(() => vi.fn(async () => null));
+vi.mock('../api/client', () => ({ api: { fileHistory, fileHistoryClose, avatar: vi.fn(async () => null) }, errorMessage: (e: unknown) => String(e) }));
 vi.mock('./BlameGutter', () => ({ BlameLayer: () => <div data-testid="blame-stub" /> }));
 vi.mock('../diff/FileView', () => ({ FileView: ({ path, text }: { path: string; text: string }) => <pre data-testid="file-view" data-path={path}>{text}</pre> }));
 // The diff editor: what it's given, and how many times it mounted (it stays from row to row).

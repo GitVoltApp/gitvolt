@@ -14,7 +14,8 @@ import { fakeServices } from '../repo/testServices';
 import { row } from './testRows';
 
 const fileHistory = vi.hoisted(() => vi.fn());
-vi.mock('../api/client', () => ({ api: { fileHistory, avatar: vi.fn(async () => null) }, errorMessage: (e: unknown) => String(e) }));
+const fileHistoryClose = vi.hoisted(() => vi.fn(async () => null));
+vi.mock('../api/client', () => ({ api: { fileHistory, fileHistoryClose, avatar: vi.fn(async () => null) }, errorMessage: (e: unknown) => String(e) }));
 vi.mock('./BlameGutter', () => ({ BlameLayer: ({ row, onPick }: { row: { sha: string }; onPick(sha: string, g: boolean): void }) => <button type="button" data-testid="blame-stub" onClick={(e) => onPick(e.ctrlKey ? 'zz9999' : 'c3', e.altKey)}>{row.sha}</button> }));
 const copyText = vi.hoisted(() => vi.fn(async (_t: string) => {}));
 vi.mock('../api/transport', () => ({ copyText, inTauri: () => false }));
@@ -119,6 +120,33 @@ describe('File History', () => {
     await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(2));
     expect(fileHistory).toHaveBeenLastCalledWith(1, '/r', 'src/story.txt', null, 1, 200);
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
+  });
+
+  it('a long history renders only the rows around the view, and ↓ keeps the selected row rendered', async () => {
+    const rows = Array.from({ length: 2000 }, (_, i) => row(`s${i}`));
+    fileHistory.mockResolvedValueOnce({ rows: rows.slice(0, 200), more: true }).mockResolvedValueOnce({ rows: rows.slice(200), more: false });
+    view();
+    await screen.findAllByRole('option');
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+    await screen.findByText('End of history');
+    expect(screen.getAllByRole('option').length).toBeLessThan(60);
+    const listbox = screen.getByRole('listbox', { name: 'Commits' });
+    for (let i = 0; i < 80; i++) fireEvent.keyDown(listbox, { key: 'ArrowDown' });
+    const selected = screen.getAllByRole('option').filter((o) => o.getAttribute('aria-selected') === 'true');
+    expect(selected.map((o) => o.dataset.sha)).toEqual(['s80']);
+    expect(listbox).toHaveAttribute('aria-activedescendant', 'fh-s80');
+    expect(screen.getAllByRole('option').length).toBeLessThan(60);
+  });
+
+  it('closing the view lets the core stop its walk', async () => {
+    fileHistory.mockResolvedValueOnce({ rows: [row('a1')], more: true });
+    fileHistoryClose.mockClear();
+    const store = createRepoViewStore(1, '/r', graph, fakeServices({ contents }));
+    const { unmount } = render(<RepoViewContext value={store}><FileHistory tabId="t1" props={args} close={vi.fn()} /></RepoViewContext>);
+    await screen.findAllByRole('option');
+    expect(fileHistoryClose).not.toHaveBeenCalled();
+    unmount();
+    expect(fileHistoryClose).toHaveBeenCalledWith(1, '/r', 'src/story.txt', null);
   });
 
   it('a row that deleted the file says so instead of showing it', async () => {

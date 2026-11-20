@@ -7,9 +7,10 @@
 .file-history-path { font-weight: 400; }
 .file-history-body { position: relative; display: grid; grid-template-columns: var(--fh-columns); flex: 1; min-height: 0; }
 .file-history-list { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; border-right: 1px solid var(--section-border); background: var(--panel-bg0); }
-.file-history-list [role="listbox"] { list-style: none; margin: 0; padding: 0; outline: none; }
+/* Virtualized: the list holds its full height, its rows on it at their offsets. */
+.file-history-list [role="listbox"] { position: relative; flex: none; list-style: none; margin: 0; padding: 0; outline: none; }
 .file-history-list [role="listbox"]:focus-visible { outline: 1px solid var(--focus-outline); outline-offset: -1px; }
-.file-history-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; column-gap: 8px; padding: 4px 8px; cursor: default; color: var(--text-normal); }
+.file-history-row { position: absolute; top: 0; left: 0; right: 0; height: var(--fh-row); box-sizing: border-box; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-content: center; column-gap: 8px; padding: 4px 8px; cursor: default; color: var(--text-normal); }
 .file-history-row .avatar { grid-row: 1 / 3; align-self: center; }
 .file-history-row:hover { background: var(--hover-row); }
 .file-history-row[aria-selected="true"] { background: var(--selected-row); color: var(--text-selected); }
@@ -30,6 +31,8 @@
 .blame-toggle:focus-visible { outline: 1px solid var(--focus-outline); }
 .file-margin { overflow: hidden; }
 .blame-gutter { position: absolute; inset: 0; }
+/* Line 1's top, moved by the scroll (BlameGutter): the groups sit at their offsets from it. */
+.blame-strip { position: absolute; top: 0; left: 0; right: 0; }
 /* A group's first row is Monaco's line box (--blame-line, --blame-font: BlameGutter), its
    text centred in it like the code's; the separator is a shadow, so it doesn't push the row down. */
 .blame-group { all: unset; position: absolute; left: 0; right: 0; box-sizing: border-box; display: flex; align-items: flex-start; gap: 6px; padding-right: 6px; box-shadow: inset 0 1px 0 var(--section-border); overflow: hidden; cursor: pointer; font-size: var(--blame-font); line-height: var(--blame-line); color: var(--text-secondary); background: var(--panel-bg0); }

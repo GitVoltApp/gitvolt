@@ -14,6 +14,30 @@ function deferred() {
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe('Loader', () => {
+  it('says whether a running load is still only a prefetch: a get of the key, running or queued, makes it not', async () => {
+    const seen: [string, boolean][] = [];
+    let open!: () => void;
+    const gate = new Promise<void>((r) => { open = r; });
+    const l: Loader<string> = new Loader(async (k) => {
+      seen.push([k, l.prefetching(k)]);
+      await gate;
+      return k;
+    }, new Lru(8), 1);
+    l.prefetch(['a', 'b']);
+    expect(seen).toEqual([['a', true]]);
+    // Running: promoted where it is.
+    const a = l.get('a');
+    expect(l.prefetching('a')).toBe(false);
+    // Queued: promoted, and started first.
+    void l.get('b');
+    open();
+    await a;
+    await flush();
+    expect(seen).toEqual([['a', true], ['b', false]]);
+    expect(l.prefetching('b')).toBe(false);
+    expect(l.prefetching('zz')).toBe(false);
+  });
+
   it('dedupes concurrent loads and caches results', async () => {
     const { calls, pending, fetcher } = deferred();
     const l = new Loader(fetcher, new Lru(10));

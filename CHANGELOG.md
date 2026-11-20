@@ -7,6 +7,32 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Changed
 
+- **File History's later pages and Blame on long files load faster (performance).** Each
+  "Load more" ran `git log --follow` again from the newest commit down to the page asked for,
+  so the 10th page re-walked 1,800 rows (about 5× the first page's time); an open history now
+  keeps one walk going and reads each page from where the last ended, and stops it when the
+  history closes or after a minute unused. Blame reads `git blame --incremental`, which names
+  each group of lines once, instead of `--porcelain`, which repeats every line's text: about
+  11 KB instead of 4.5 MB for a 50,000-line file.
+- **File History stays quick with thousands of commits loaded (performance).** Its commit list
+  drew every loaded row and drew them all again on each change: with 2,000 rows, each ↑/↓
+  took about 73 ms (26 ms with 200), each "Load more" up to 190 ms, and the rows held about
+  26 MB. The list now draws only the rows on screen and a few around them, and a step redraws
+  the two rows whose selection changed.
+- **Scrolling a file with Blame on is as smooth as without it (performance).** The blame gutter
+  drew its rows again on every scroll event, which kept the main thread about 60% busy while
+  scrolling. It now lays out a screen's worth of rows above and below the view once, moves them
+  with the code, and draws again only when the scroll leaves them.
+- **The first diff of a session opens as fast as the next ones (performance).** The editor
+  (Monaco), its syntax highlighter and their workers loaded only when the first diff opened,
+  which took about half a second against 50 ms for any diff after it, and the merge tool's
+  first open about as long. They now load once, in an idle moment after the first list of files
+  shows.
+- **Opening a file no longer pulls in a heavy neighbour (performance).** To make ↑/↓ instant,
+  opening a file also fetches the files on either side of it, whatever their size: a 10 KB
+  file's open could pull a 1 MB neighbour, and a PDF's 6 MB. Images, PDFs, audio, video,
+  fonts, other binaries and changes of more than 2,000 lines are no longer fetched ahead, nor is
+  any preview's image, PDF or media over 256 KB in all; they load when you step to them.
 - **Images, PDFs, audio, video and fonts in a diff load as raw bytes (performance).** Their bytes
   reached the window as base64 text inside the diff's JSON, a third larger, then were decoded
   again in the page: a 5 MB PNG was a 13 MB reply that took about 120 ms of script and held the
@@ -112,6 +138,9 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   removed from a 30,000-line file took 0.4 s (now 0.1 s). A removed block of 400 lines or more
   now draws only the lines on and near the screen as you scroll; it looks, scrolls, copies and
   takes comments as before. Split, and smaller blocks, are unchanged.
+- **Videos in a rendered Markdown file decode a little sooner (performance).** Their bytes
+  arrive as base64, and a JavaScript loop took about 19 ms to decode 5 MB; the engine's own
+  decoder (`Uint8Array.fromBase64`) takes about 5 ms, where it has one.
 - **The background fetch connects to each remote once, not twice (performance).** After every
   fetch, GitVolt asked each remote for its whole tag list (`git ls-remote --tags`), for the tag
   chips' pushed-or-not icons: a second connection, SSH handshake and credential helper run per

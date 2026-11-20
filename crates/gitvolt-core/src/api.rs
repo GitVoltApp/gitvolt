@@ -885,6 +885,16 @@ pub enum Request {
         skip: u32,
         limit: u32,
     },
+    /// A File History closed: its walk (`fileHistory`'s pages) stops. The same arguments as its
+    /// pages; `null`.
+    FileHistoryClose {
+        repo: u32,
+        worktree: String,
+        path: String,
+        #[serde(default)]
+        #[ts(optional)]
+        rev: Option<String>,
+    },
     /// `path` at `rev`, line by line (read): `BlamePayload`.
     Blame { repo: u32, worktree: String, rev: String, path: String },
     // --- restore a file from a commit ---
@@ -1326,7 +1336,7 @@ impl Request {
             // The pause: a write (its settle may restore an autostash).
             Request::SettlePaused { .. } => true,
             Request::ConflictFile { .. } => false,
-            Request::FileHistory { .. } | Request::Blame { .. } => false,
+            Request::FileHistory { .. } | Request::FileHistoryClose { .. } | Request::Blame { .. } => false,
             Request::RestoreFile { .. } => true,
             Request::LfsStatus { .. } | Request::LfsTracked { .. } => false,
             Request::LfsFetch { .. } | Request::LfsPull { .. } | Request::LfsDownload { .. } | Request::LfsTrack { .. } | Request::LfsUntrack { .. } => true,
@@ -1535,6 +1545,8 @@ pub struct Api {
     /// session, an unknown key or untrusted one briefly and only while the config files are
     /// unchanged (`signature::SignatureCache`).
     pub(crate) signatures: Mutex<crate::signature::SignatureCache>,
+    /// The open File Histories' `git log --follow` walks, between pages.
+    pub(crate) history_walks: crate::history::HistoryWalks,
     pub(crate) avatars: Option<Arc<dyn AvatarProvider>>,
     /// Forge accounts and providers. `None` (most tests): the account list is
     /// empty and the other forge requests refuse.
@@ -1774,6 +1786,7 @@ impl Api {
             version: OnceCell::new(),
             lfs_version: std::sync::Mutex::new(None),
             signatures: Mutex::new(crate::signature::SignatureCache::new(SIGNATURE_CACHE_MAX)),
+            history_walks: Default::default(),
             avatars: None,
             forge: None,
             url_opener: None,
@@ -3222,6 +3235,10 @@ impl Api {
             // --- conflicted files ---
             Request::ConflictFile { repo, worktree, path } => to_json(crate::write::conflict::conflict_file(self, repo, &worktree, path).await?),
             Request::FileHistory { repo, worktree, path, rev, skip, limit } => to_json(crate::history::file_history(self, repo, &worktree, path, rev, skip, limit).await?),
+            Request::FileHistoryClose { repo, worktree, path, rev } => {
+                self.history_walks.close(repo, worktree, path, rev);
+                to_json(())
+            }
             Request::Blame { repo, worktree, rev, path } => to_json(crate::history::blame(self, repo, &worktree, rev, path).await?),
             Request::RestoreFile { repo, worktree, sha, path, confirm } => to_json(crate::write::restore::restore_file(self, repo, &worktree, sha, path, confirm.unwrap_or(false)).await?),
             Request::LfsStatus { repo, recheck } => {
@@ -5534,6 +5551,7 @@ mod tests {
             json!({"method": "selectionLines", "params": {"repo": id, "worktree": wt, "path": "file_1.txt", "staged": false, "selection": {"kind": "hunks", "hunks": [0]}}}),
             json!({"method": "rebasePlan", "params": {"repo": id, "worktree": wt, "branch": "feature/login", "base": "v1.0"}}),
             json!({"method": "fileHistory", "params": {"repo": id, "worktree": wt, "path": "file_1.txt", "skip": 0, "limit": 200}}),
+            json!({"method": "fileHistoryClose", "params": {"repo": id, "worktree": wt, "path": "file_1.txt"}}),
             json!({"method": "blame", "params": {"repo": id, "worktree": wt, "rev": head, "path": "file_0.txt"}}),
             json!({"method": "lfsStatus", "params": {"repo": id}}),
             json!({"method": "lfsTracked", "params": {"repo": id, "worktree": wt, "paths": ["file_0.txt"]}}),

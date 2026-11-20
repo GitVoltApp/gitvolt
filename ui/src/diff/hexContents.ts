@@ -4,6 +4,7 @@
 // marks `raw` (images, PDFs, media). No React or Monaco here: the services module is in the
 // startup chunk.
 import { api, type ContentsRequest } from '../api/client';
+import { DroppedError } from '../data/loader';
 import type { BlobPayload } from '../api/gen/BlobPayload';
 import type { BlobSource } from '../api/gen/BlobSource';
 import type { DiffContentsPayload } from '../api/gen/DiffContentsPayload';
@@ -26,12 +27,19 @@ export type RawBlob = BlobPayload & { bytes?: Uint8Array<ArrayBuffer> };
 /** A loaded side's raw bytes: `null` for a side that isn't `raw` (text, a binary shown as hex). */
 export const bytesOf = (b: BlobPayload | null | undefined): Uint8Array<ArrayBuffer> | null => (b as RawBlob | null | undefined)?.bytes ?? null;
 
+/** The most raw bytes (both sides) a neighbour's prefetch reads: a step to a small icon is
+ * instant, while a large image's, a PDF's or a video's preview loads only when it's opened. */
+export const PREFETCH_RAW_MAX = 256 * 1024;
+
 /** `diffContents`, then, for a binary, `hexDump` of the same sides, else the `raw` sides' bytes
- * (`blobBytes`, both at once). */
-export async function loadContents(repo: number, req: ContentsRequest): Promise<HexContents> {
+ * (`blobBytes`, both at once). A load that's still a prefetch (`prefetching`) stops before raw
+ * sides over `PREFETCH_RAW_MAX` (a `DroppedError`: nothing is cached, the open loads them). */
+export async function loadContents(repo: number, req: ContentsRequest, prefetching: () => boolean = () => false): Promise<HexContents> {
   const c = await api.diffContents(repo, req);
   if (wantsHex(c)) return { ...c, hex: await api.hexDump(repo, req) };
   if (!c.old?.raw && !c.new?.raw) return c;
+  const rawSize = [c.old, c.new].reduce((n, b) => n + (b?.raw ? b.size : 0), 0);
+  if (rawSize > PREFETCH_RAW_MAX && prefetching()) throw new DroppedError();
   // Each side is read by the request's path, as `diffContents` reads both.
   const read = async (b: BlobPayload | null, side: BlobSource): Promise<RawBlob | null> => (b?.raw ? { ...b, bytes: await api.blobBytes(repo, req.path, side) } : b);
   const [old, neu] = await Promise.all([read(c.old, req.old), read(c.new, req.new)]);

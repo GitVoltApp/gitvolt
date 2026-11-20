@@ -9,7 +9,7 @@ import { worktreeRoot } from '../engine/read/worktrees';
 /** The most rows one page may ask for (the UI asks for 200). */
 export const HISTORY_PAGE_MAX = 1000;
 
-export const historyHandlers: Pick<HandlerTable, 'fileHistory' | 'blame'> = {
+export const historyHandlers: Pick<HandlerTable, 'fileHistory' | 'fileHistoryClose' | 'blame'> = {
   fileHistory: async ({ repo: id, worktree, path, rev, skip, limit }, ctx) => {
     checkRelative(path);
     const r = rev ?? 'HEAD';
@@ -21,6 +21,8 @@ export const historyHandlers: Pick<HandlerTable, 'fileHistory' | 'blame'> = {
     const rows = await followLog(repo, await revParse(repo, r, root), path, skip + size + 1);
     return { rows: rows.slice(skip, skip + size), more: rows.length > skip + size };
   },
+  // Each page walks again here: there's no walk to stop.
+  fileHistoryClose: async () => null,
   blame: async ({ repo: id, worktree, rev, path }, ctx) => {
     checkRelative(path);
     if (rev.startsWith('-')) fail('InvalidInput', `not a revision: ${rev}`);

@@ -21,7 +21,10 @@ interface Job<V> { key: string; priority: Priority; resolve: (v: V) => void; rej
  * is cached; callers ignore results for selections they've left (the store's sequence number).
  *
  * The fetcher runs synchronously inside `get`/`prefetch` whenever a slot is free, so a request
- * is sent before `get` returns; a fetcher that throws synchronously rejects that load.
+ * is sent before `get` returns; a fetcher that throws synchronously rejects that load. While it
+ * runs, `prefetching(key)` says whether its load is still only a prefetch (a `get` of the key
+ * since makes it `now`): a fetcher can leave out what only an open needs by rejecting with a
+ * `DroppedError`, which is never cached or shown.
  */
 export class Loader<V> {
   readonly cache: Lru<string, V>;
@@ -31,6 +34,8 @@ export class Loader<V> {
   private readonly reserve: number;
   private readonly inflight = new Map<string, Promise<V>>();
   private queue: Job<V>[] = [];
+  /** The started jobs, by key: a `get` promotes one as it does a queued one. */
+  private readonly started = new Map<string, Job<V>>();
   private running = 0;
 
   /** `reserve`: slots past `concurrency` that only `get`s (priority `now`) may use, so what the
@@ -66,6 +71,11 @@ export class Loader<V> {
     return promise;
   }
 
+  /** `key`'s load is running, and only as a prefetch so far (no `get` has asked for it). */
+  prefetching(key: string): boolean {
+    return this.started.get(key)?.priority === 'prefetch';
+  }
+
   /** Replaces every queued (not yet started) prefetch with `keys`. */
   prefetch(keys: string[]): void {
     const wanted = new Set(keys);
@@ -84,6 +94,8 @@ export class Loader<V> {
   }
 
   private promote(key: string): void {
+    const running = this.started.get(key);
+    if (running) running.priority = 'now';
     const i = this.queue.findIndex((j) => j.key === key);
     if (i < 0) return;
     const [job] = this.queue.splice(i, 1);
@@ -96,6 +108,7 @@ export class Loader<V> {
     while (this.queue.length > 0 && this.running < this.concurrency + (this.queue[0].priority === 'now' ? this.reserve : 0)) {
       const job = this.queue.shift()!;
       this.running++;
+      this.started.set(job.key, job);
       let p: Promise<V>;
       try {
         p = Promise.resolve(this.fetcher(job.key));
@@ -110,6 +123,7 @@ export class Loader<V> {
         (e: unknown) => job.reject(e),
       ).finally(() => {
         this.inflight.delete(job.key);
+        if (this.started.get(job.key) === job) this.started.delete(job.key);
         this.running--;
         this.pump();
       });

@@ -137,6 +137,14 @@ describe('FileList', () => {
     expect(rec.calls).toEqual([key('docs/manual.txt'), key('src/app.php')]);
   });
 
+  it("an image neighbour isn't fetched ahead: its bytes are often megabytes", () => {
+    useFileListPrefs.getState().set({ mode: 'path', sort: 'path', allFiles: false });
+    const rec = recordingServices();
+    setup(rec.services);
+    fireEvent.mouseDown(rowEls()[2]);
+    expect(rec.calls).toEqual([]);
+  });
+
   it("rows are the density preset's height, following a change", () => {
     useFileListPrefs.getState().set({ mode: 'path', sort: 'path', allFiles: false });
     setup();
