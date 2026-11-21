@@ -228,8 +228,10 @@ struct GitState {
 }
 
 /// The commit `git_dir`'s HEAD resolves to, from the files alone: loose refs, then
-/// `packed-refs`. `None` for an unborn branch (or a HEAD that can't be read).
-fn head_tip(git_dir: &Path, common_dir: &Path) -> Option<String> {
+/// `packed-refs` (`packed`: read at most once per snapshot, however many worktrees ask, since a
+/// fetch's ref change takes one and the file can be megabytes). `None` for an unborn branch (or a
+/// HEAD that can't be read).
+fn head_tip(git_dir: &Path, common_dir: &Path, packed: &std::cell::OnceCell<Option<String>>) -> Option<String> {
     let mut target = std::fs::read_to_string(git_dir.join("HEAD")).ok()?.trim().to_string();
     // A symbolic ref may name another one; git stops after a few hops too.
     for _ in 0..5 {
@@ -237,7 +239,7 @@ fn head_tip(git_dir: &Path, common_dir: &Path) -> Option<String> {
         target = match std::fs::read_to_string(common_dir.join(&name)) {
             Ok(loose) => loose.trim().to_string(),
             Err(_) => {
-                let packed = std::fs::read_to_string(common_dir.join("packed-refs")).ok()?;
+                let packed = packed.get_or_init(|| std::fs::read_to_string(common_dir.join("packed-refs")).ok()).as_deref()?;
                 packed.lines().find_map(|l| l.strip_suffix(name.as_str())?.strip_suffix(' ').map(str::to_string))?
             }
         };
@@ -290,7 +292,10 @@ fn git_state(common_dir: &Path, worktrees: &[WatchedWorktree]) -> GitState {
                 }
             }
         }),
-        tips: worktrees.iter().map(|w| (w.root.clone(), head_tip(&w.git_dir, common_dir))).collect(),
+        tips: {
+            let packed = std::cell::OnceCell::new();
+            worktrees.iter().map(|w| (w.root.clone(), head_tip(&w.git_dir, common_dir, &packed))).collect()
+        },
     }
 }
 
