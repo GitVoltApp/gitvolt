@@ -13,6 +13,7 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 ### Fixed
 
 - **Pop and Apply keep other staged files staged.** git's own unstaged them, then refused.
+- **A PR's view reads its reviews once.** Its detail and its conversation asked at the same time, so GitHub heard it twice.
 
 ## [1.7.0] - 2026-11-20
 

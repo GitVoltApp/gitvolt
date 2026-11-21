@@ -299,6 +299,9 @@ struct Inner {
     /// a download takes as long as it takes, up to `DOWNLOAD_TIMEOUT`.
     download_agent: ureq::Agent,
     etags: Mutex<EtagCache>,
+    /// A cached GET in flight, by cache key: a second GET of it waits, then answers from what the
+    /// first kept (fresh) instead of asking again.
+    flights: Mutex<std::collections::HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     rate: Mutex<RateLimitState>,
     /// Until when the API's origin is taken as unreachable, and the error that said so.
     down: Mutex<Option<(i64, String)>>,
@@ -357,6 +360,7 @@ impl HttpClient {
                 agent,
                 download_agent,
                 etags: Mutex::default(),
+                flights: Mutex::default(),
                 rate: Mutex::default(),
                 down: Mutex::default(),
                 permits: Arc::new(tokio::sync::Semaphore::new(PARALLEL)),
@@ -721,6 +725,27 @@ impl HttpClient {
             Some(a) => format!("{url}\n{a}"),
             None => url.clone(),
         };
+        // Concurrent GETs of one URL (a view's detail and its discussion both read a PR's reviews)
+        // go one at a time, so the later one finds the earlier's answer fresh.
+        let flight = if method == Method::Get && cached && !self.inner.fresh.is_zero() {
+            let gate = self.inner.flights.lock().expect("flights poisoned").entry(key.clone()).or_default().clone();
+            Some((gate.clone().lock_owned().await, gate))
+        } else {
+            None
+        };
+        let out = self.request_flight(method, url, key.clone(), body, accept, cached).await;
+        if let Some((guard, gate)) = flight {
+            drop(guard);
+            let mut flights = self.inner.flights.lock().expect("flights poisoned");
+            // Only the map and this call hold it: nobody waits.
+            if Arc::strong_count(&gate) == 2 {
+                flights.remove(&key);
+            }
+        }
+        out
+    }
+
+    async fn request_flight(&self, method: Method, url: String, key: String, body: Option<Vec<u8>>, accept: Option<&'static str>, cached: bool) -> Result<HttpResponse, GbError> {
         let snapshot = if method == Method::Get && cached { self.inner.etags.lock().expect("etags poisoned").map.get(&key).cloned() } else { None };
         if let Some(c) = snapshot.as_ref().filter(|c| self.is_fresh(c)) {
             self.inner.fresh_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
