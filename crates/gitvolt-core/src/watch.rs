@@ -31,7 +31,7 @@ use crate::write::queue::RefreshPermit;
 use crate::worktree::{list_worktrees, Worktree};
 use notify::event::{AccessKind, AccessMode, CreateKind, EventKind, ModifyKind, RemoveKind, RenameMode};
 use notify::{RecursiveMode, Watcher};
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -222,6 +222,27 @@ struct GitState {
     config: u64,
     heads: u64,
     state: u64,
+    /// Per worktree root: the commit its HEAD resolves to, which its status compares the index
+    /// with. A commit or reset on the checked-out branch moves it without touching HEAD.
+    tips: BTreeMap<PathBuf, Option<String>>,
+}
+
+/// The commit `git_dir`'s HEAD resolves to, from the files alone: loose refs, then
+/// `packed-refs`. `None` for an unborn branch (or a HEAD that can't be read).
+fn head_tip(git_dir: &Path, common_dir: &Path) -> Option<String> {
+    let mut target = std::fs::read_to_string(git_dir.join("HEAD")).ok()?.trim().to_string();
+    // A symbolic ref may name another one; git stops after a few hops too.
+    for _ in 0..5 {
+        let Some(name) = target.strip_prefix("ref:").map(|n| n.trim().to_string()) else { return Some(target) };
+        target = match std::fs::read_to_string(common_dir.join(&name)) {
+            Ok(loose) => loose.trim().to_string(),
+            Err(_) => {
+                let packed = std::fs::read_to_string(common_dir.join("packed-refs")).ok()?;
+                packed.lines().find_map(|l| l.strip_suffix(name.as_str())?.strip_suffix(' ').map(str::to_string))?
+            }
+        };
+    }
+    None
 }
 
 fn hash_file(h: &mut impl Hasher, path: &Path) {
@@ -269,7 +290,13 @@ fn git_state(common_dir: &Path, worktrees: &[WatchedWorktree]) -> GitState {
                 }
             }
         }),
+        tips: worktrees.iter().map(|w| (w.root.clone(), head_tip(&w.git_dir, common_dir))).collect(),
     }
+}
+
+/// The worktrees in both snapshots whose HEAD now resolves to another commit.
+fn moved_tips(old: &GitState, new: &GitState) -> Vec<PathBuf> {
+    new.tips.iter().filter(|(root, tip)| old.tips.get(*root).is_some_and(|was| was != *tip)).map(|(root, _)| root.clone()).collect()
 }
 
 fn changed_kinds(old: &GitState, new: &GitState) -> BTreeSet<ChangeKind> {
@@ -1087,6 +1114,18 @@ impl Loop {
             // A checkout may add or remove tracked directories.
             self.replan().await;
         }
+        let git_kinds = [ChangeKind::Refs, ChangeKind::Head, ChangeKind::Stash, ChangeKind::Config, ChangeKind::State];
+        let mut next = None;
+        if batch.overflow || rebased || git_kinds.iter().any(|k| kinds.contains(k)) {
+            let (c, w) = (self.spec.common_dir.clone(), self.spec.worktrees.clone());
+            next = tokio::task::spawn_blocking(move || git_state(&c, &w)).await.ok();
+        }
+        // A commit, reset or pull on a checked-out branch (with the git CLI, say) moves the commit
+        // its worktree's status compares with, though neither its HEAD nor its index entries
+        // need change: read it again, or the WIP row keeps what was just committed as staged.
+        if let Some(next) = &next {
+            status.extend(moved_tips(&self.git, next));
+        }
         if batch.overflow {
             status.extend(self.roots());
         }
@@ -1105,17 +1144,13 @@ impl Loop {
         }
         self.note_runs(&status, &batch.touched);
         let mut changed = self.refresh_status(&status, false, &batch.touched, batch.overflow).await;
-        let git_kinds = [ChangeKind::Refs, ChangeKind::Head, ChangeKind::Stash, ChangeKind::Config, ChangeKind::State];
-        if batch.overflow || rebased || git_kinds.iter().any(|k| kinds.contains(k)) {
-            let (c, w) = (self.spec.common_dir.clone(), self.spec.worktrees.clone());
-            if let Ok(next) = tokio::task::spawn_blocking(move || git_state(&c, &w)).await {
-                if batch.overflow || rebased {
-                    // Lost events, or a write's own changes: report only what the snapshot shows changed.
-                    kinds.retain(|k| !git_kinds.contains(k));
-                    kinds.extend(changed_kinds(&self.git, &next));
-                }
-                self.git = next;
+        if let Some(next) = next {
+            if batch.overflow || rebased {
+                // Lost events, or a write's own changes: report only what the snapshot shows changed.
+                kinds.retain(|k| !git_kinds.contains(k));
+                kinds.extend(changed_kinds(&self.git, &next));
             }
+            self.git = next;
         }
         if !topology.is_empty() {
             kinds.extend([ChangeKind::Head, ChangeKind::Worktree]);
@@ -1858,6 +1893,29 @@ mod tests {
         assert_eq!(main_added(&call(&api, graph).await), 2, "the watcher refreshed the cache");
     }
 
+    /// A commit made with the git CLI moves the branch HEAD names, not HEAD itself, and rewrites the
+    /// index with the same entries: the worktree's status is read again all the same, so the WIP
+    /// row and its staged list don't keep showing what was just committed.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_commit_made_with_the_cli_rereads_status() {
+        let r = TestRepo::new();
+        fixtures::basic(&r);
+        let (api, id, mut rx) = watched(&r).await;
+        let graph = serde_json::json!({"method": "graph", "params": {"repo": id, "limit": null}});
+        r.write("staged.txt", "x\n");
+        r.git(&["add", "staged.txt"]);
+        while main_added(&call(&api, graph.clone()).await) != 1 {
+            next_change(&mut rx, Duration::from_secs(5)).await.expect("the add is seen");
+        }
+        r.git(&["commit", "-q", "-m", "from the cli"]);
+        let (kinds, _) = next_change(&mut rx, Duration::from_secs(5)).await.expect("the commit is seen");
+        assert!(kinds.contains(&ChangeKind::Refs), "{kinds:?}");
+        assert_eq!(main_added(&call(&api, graph).await), 0, "the WIP row no longer counts the committed file");
+        let wt = canonical(r.path());
+        let staged = call(&api, serde_json::json!({"method": "fileList", "params": {"repo": id, "spec": {"kind": "wip", "worktree": wt, "staged": true}}})).await;
+        assert_eq!(staged["files"].as_array().map(Vec::len), Some(0), "{staged}");
+    }
+
     /// Requests run concurrently: an unwatch that lands while the watch is still being set up
     /// wins, and nothing stays watched.
     #[tokio::test(flavor = "multi_thread")]
@@ -2101,6 +2159,36 @@ mod tests {
         step(&|| drop(r.git(&["config", "gitvolt.test", "1"])), &[ChangeKind::Config]);
         step(&|| drop(r.git(&["switch", "-q", "snap-branch"])), &[ChangeKind::Head]);
         step(&|| drop(r.git(&["stash", "push", "-q"])), &[ChangeKind::Stash]);
+    }
+
+    /// Only what moves the commit a worktree's HEAD resolves to counts: a commit on its branch,
+    /// or a detached HEAD moved; not another branch, a remote ref, or the refs being packed.
+    #[test]
+    fn the_git_snapshot_tells_whose_head_moved() {
+        let r = TestRepo::new();
+        fixtures::basic(&r);
+        let common = crate::platform::fs::canonicalize(r.path().join(".git")).unwrap();
+        let root = crate::platform::fs::canonicalize(r.path()).unwrap();
+        let wts = [WatchedWorktree { root: root.clone(), git_dir: common.clone() }];
+        let mut before = git_state(&common, &wts);
+        let head = || r.git(&["rev-parse", "HEAD"]).trim().to_string();
+        assert_eq!(before.tips[&root], Some(head()), "a loose branch");
+        let mut step = |f: &dyn Fn(), moved: bool| {
+            f();
+            let now = git_state(&common, &wts);
+            assert_eq!(moved_tips(&before, &now), if moved { vec![root.clone()] } else { vec![] });
+            assert_eq!(now.tips[&root], Some(head()));
+            before = now;
+        };
+        step(&|| drop(r.git(&["branch", "elsewhere"])), false);
+        step(&|| drop(r.git(&["update-ref", "refs/remotes/origin/fetched", "HEAD~1"])), false);
+        step(&|| drop(r.git(&["pack-refs", "--all"])), false);
+        step(&|| drop(r.git(&["commit", "-q", "--allow-empty", "-m", "on the branch"])), true);
+        step(&|| drop(r.git(&["pack-refs", "--all"])), false);
+        step(&|| drop(r.git(&["switch", "-q", "--detach"])), false);
+        step(&|| drop(r.git(&["commit", "-q", "--allow-empty", "-m", "detached"])), true);
+        r.git(&["symbolic-ref", "HEAD", "refs/heads/unborn"]);
+        assert_eq!(git_state(&common, &wts).tips[&root], None, "an unborn branch");
     }
 
     /// inotify's watch limit (ENOSPC): no more watches, and the cache is no longer trusted, so a
