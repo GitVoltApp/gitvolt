@@ -1,4 +1,4 @@
-import { ArchiveRestore, PackageOpen, Trash2 } from 'lucide-react';
+import { ArchiveRestore, PackageOpen, PackagePlus, Trash2 } from 'lucide-react';
 import type { StashPart } from '../api/gen/StashPart';
 import { StashIcon } from '../icons/stash';
 import { activeRuntime, activeTab, registerActions } from '../app/actions';
@@ -13,7 +13,8 @@ import { COMMIT_QUEUED, stagingKey, useStaging } from '../stage/store';
 import { registerToolbarButton, type ButtonView } from '../toolbar/registry';
 import type { WriteCtx } from '../write/client';
 import { isTypingTarget } from '../ui/keys';
-import { applyStash, dropStash, stashPathsFor, stashPushFor } from './actions';
+import { stashLabel } from '../sidebar/stashLabel';
+import { addToStashFor, applyStash, dropStash, stashPathsFor, stashPushFor } from './actions';
 
 const writeCtx = (): WriteCtx | null => {
   const t = activeTab();
@@ -43,6 +44,25 @@ export function stashPathsBlocked(ctx: WriteCtx): string | undefined {
 
 const stashPathsRow = (ctx: WriteCtx, id: string, label: string, tooltip: string, paths: string[], part: StashPart, blocked?: string): MenuRow =>
   ({ kind: 'action', id, label, icon: StashIcon, tooltip, run: () => { void stashPathsFor(ctx, paths, part); }, disabledReason: blocked ?? stashPathsBlocked(ctx) });
+
+/** A stash's name in a menu row: its own message, a long one cut short. */
+export const shortStashName = (message: string): string => {
+  const text = stashLabel(message).text;
+  return text.length > 32 ? `${text.slice(0, 31).trimEnd()}…` : text;
+};
+
+/** Add to stash, beside a WIP file's or folder's Stash: the same part joins the latest stash (none:
+ * no row). `what`: the label's middle ("staged changes in src/"). */
+const addRow = (ctx: WriteCtx, id: string, what: string, tooltip: string, paths: string[], part: StashPart, blocked?: string): MenuRow[] => {
+  const top = newest(useRuntime.getState().tabs[ctx.tabId]);
+  if (!top) return [];
+  const name = stashLabel(top.message).text;
+  return [{
+    kind: 'action', id, label: `Add ${what} to "${shortStashName(top.message)}"`, icon: PackagePlus,
+    tooltip: `${tooltip} to the latest stash, "${name}", which keeps its name and its place (you can undo this)`,
+    run: () => { void addToStashFor(ctx, paths, part, top.id); }, disabledReason: blocked ?? stashPathsBlocked(ctx),
+  }];
+};
 
 /** The part a WIP list's Stash takes: the list's own. */
 const partOf = (staged: boolean | undefined): StashPart => (staged ? 'staged' : 'unstaged');
@@ -100,7 +120,11 @@ const offs = [
     when: (t, env) => !!t.wip && t.wip.status !== 'U' && !t.wip.submodule && !!env.write,
     rows: (t, env) => {
       const part = partOf(t.wip!.staged);
-      return [stashPathsRow({ ...env.write!, worktree: t.wip!.worktree }, 'file.stash', `Stash ${part} changes`, `Stash this file’s ${part} changes; its ${OTHER[part]} changes and the other files stay as they are (you can undo this)`, [t.path], part)];
+      const ctx = { ...env.write!, worktree: t.wip!.worktree };
+      return [
+        stashPathsRow(ctx, 'file.stash', `Stash ${part} changes`, `Stash this file’s ${part} changes; its ${OTHER[part]} changes and the other files stay as they are (you can undo this)`, [t.path], part),
+        ...addRow(ctx, 'file.stashAdd', `${part} changes`, `Add this file’s ${part} changes`, [t.path], part),
+      ];
     },
   }),
   registerMenu<FolderTarget, MenuEnv>({
@@ -111,7 +135,11 @@ const offs = [
       const conflicted = (t.wip!.conflicted.length > 0 || t.wip!.files!.some((f) => f.status === 'U')) ? `Resolve the conflicted files in ${t.path}/ first` : undefined;
       const part = partOf(t.wip!.staged);
       const what = part === 'staged' ? 'staged changes' : 'unstaged changes and untracked files';
-      return [stashPathsRow({ ...env.write!, worktree: t.wip!.worktree }, 'folder.stash', `Stash ${part} changes in ${t.path}/`, `Stash the ${what} in ${t.path}/; their ${OTHER[part]} changes and the other files stay as they are (you can undo this)`, [t.path], part, conflicted)];
+      const ctx = { ...env.write!, worktree: t.wip!.worktree };
+      return [
+        stashPathsRow(ctx, 'folder.stash', `Stash ${part} changes in ${t.path}/`, `Stash the ${what} in ${t.path}/; their ${OTHER[part]} changes and the other files stay as they are (you can undo this)`, [t.path], part, conflicted),
+        ...addRow(ctx, 'folder.stashAdd', `${part} changes in ${t.path}/`, `Add the ${what} in ${t.path}/`, [t.path], part, conflicted),
+      ];
     },
   }),
   registerMenu<WipTarget, MenuEnv>({

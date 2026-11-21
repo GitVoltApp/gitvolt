@@ -854,6 +854,11 @@ pub enum Request {
         #[serde(default)]
         #[ts(optional)]
         part: Option<crate::write::stash::StashPart>,
+        /// Add to stash: the latest stash's oid as shown (with `paths` and `part`). The part joins
+        /// it, which keeps its message and its place; refused once it's no longer the latest.
+        #[serde(default)]
+        #[ts(optional)]
+        into: Option<String>,
     },
     /// Apply, or Pop: `WriteResult<StashApplyOutcome>`. `withoutIndex`: after "Apply
     /// without restoring what was staged?". A gone `oid` is `NotFound` "That stash is gone".
@@ -3388,7 +3393,7 @@ impl Api {
                 let confirm = crate::write::types::Confirm { autostash: confirm_autostash.unwrap_or(false) };
                 to_json(crate::write::run_write(self, repo, &worktree, expect, crate::write::checkout::Checkout::new(target, on_diverged, confirm)).await?)
             }
-            Request::StashPush { repo, worktree, message, paths, part } => to_json(crate::write::stash::stash_push(self, repo, &worktree, message, paths, part).await?),
+            Request::StashPush { repo, worktree, message, paths, part, into } => to_json(crate::write::stash::stash_push(self, repo, &worktree, message, paths, part, into).await?),
             Request::StashApply { repo, worktree, oid, pop, without_index } => to_json(crate::write::stash::stash_apply(self, repo, &worktree, oid, pop, without_index.unwrap_or(false)).await?),
             Request::StashDrop { repo, worktree, oid } => to_json(crate::write::stash::stash_drop(self, repo, &worktree, oid).await?),
             // --- reset ---

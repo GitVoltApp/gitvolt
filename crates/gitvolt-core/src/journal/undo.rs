@@ -546,8 +546,9 @@ impl WriteIntent for UndoIntent {
                 // The undo of a push applies the stash; its redo pushes again; the redo of a pop
                 // applies the dropped stash: each a move over the worktree, checked first.
                 (Direction::Undo, None, _) => {
+                    // An add's undo applies the added part's own stash.
                     if let Some(m) = self.entry.stashes.first().filter(|m| m.created) {
-                        crate::write::stash::refuse_stash_apply_in_the_way(pre, &m.oid, "undo").await?;
+                        crate::write::stash::refuse_stash_apply_in_the_way(pre, m.added.as_deref().unwrap_or(&m.oid), "undo").await?;
                     }
                     None
                 }

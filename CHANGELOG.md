@@ -9,7 +9,7 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 - **Stash just some files.** Right-click a file or folder in Staged or Unstaged (or press
   Ctrl+Alt+Shift+S on the open file) to stash only its changes in that list; Pop puts them back
-  there, and the rest stays as it is.
+  there, and the rest stays as it is. "Add … to <latest stash>" builds one stash up from such bits.
 
 ### Fixed
 

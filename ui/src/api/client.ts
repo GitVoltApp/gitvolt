@@ -414,9 +414,10 @@ export const api = {
     call<WriteResult<DeleteOutcome>>({ method: 'deleteBranch', params: { repo, worktree, ...d } }),
   /** Stash: `message` is the WIP draft, '' for the branch-based name. `paths`: those files and
    * folders only (a WIP file's or folder's Stash), named from them; `part`: their staged or
-   * unstaged changes only (the list the Stash was started from). */
-  stashPush: (repo: number, worktree: string, message: string, paths?: string[], part?: StashPart) =>
-    call<WriteResult<StashPushOutcome>>({ method: 'stashPush', params: { repo, worktree, message, ...(paths && { paths }), ...(part && { part }) } }),
+   * unstaged changes only (the list the Stash was started from). `into`: the latest stash's oid
+   * as shown, which the part is added to (Add to stash). */
+  stashPush: (repo: number, worktree: string, message: string, paths?: string[], part?: StashPart, into?: string) =>
+    call<WriteResult<StashPushOutcome>>({ method: 'stashPush', params: { repo, worktree, message, ...(paths && { paths }), ...(part && { part }), ...(into && { into }) } }),
   stashApply: (repo: number, worktree: string, oid: string, pop: boolean, withoutIndex: boolean) =>
     call<WriteResult<StashApplyOutcome>>({ method: 'stashApply', params: { repo, worktree, oid, pop, withoutIndex } }),
   stashDrop: (repo: number, worktree: string, oid: string) => call<WriteResult<null>>({ method: 'stashDrop', params: { repo, worktree, oid } }),

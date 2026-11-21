@@ -361,5 +361,49 @@ describe('undoStash', () => {
       await h.stashApply({ repo: 1, worktree: t.dir, oid: stashList(r.wt)[0].oid, pop: true }, r.ctx);
       expect(await state(r as unknown as T)).toEqual(before);
     });
+
+    describe('Add to the latest stash', () => {
+      const add = (r: T, part: 'staged' | 'unstaged', paths: string[]) => h.stashPush({ repo: 1, worktree: r.t.dir, message: '', paths, part, into: stashList(r.wt)[0]?.oid ?? 'none' }, r.ctx);
+
+      it('folds the part into the latest stash, its name and place kept; Pop puts each part back where it was', async () => {
+        const r = await mixed();
+        const before = await state(r);
+        await push(r, 'staged', ['o.txt']);
+        const out = await add(r, 'unstaged', ['m.txt', 'n.txt']);
+        const e = r.ctx.writes.journal(r.t.dir).undoTop()!;
+        expect([out.journal.undo?.label, stashList(r.wt).map((s) => s.subject), e.stashes.map((m) => m.created)]).toEqual(['add to stash "WIP on main: o.txt (staged)"', ['On main: WIP on main: o.txt (staged)'], [true, false]]);
+        expect(await status(r.t)).toEqual(['M. m.txt']);
+        expect((await h.stashApply({ repo: 1, worktree: r.t.dir, oid: stashList(r.wt)[0].oid, pop: true }, r.ctx)).outcome).toEqual({ status: 'applied' });
+        expect(await state(r)).toEqual(before);
+      });
+
+      it('undoes to the very same stash and files, and redoes', async () => {
+        const r = await mixed();
+        await push(r, 'staged', ['o.txt']);
+        const [before, old] = [await state(r), stashList(r.wt)[0].oid];
+        await add(r, 'staged', ['m.txt']);
+        const after = await state(r);
+        const id = r.ctx.writes.journal(r.t.dir).undoTop()!.id;
+        await undoWrite(r.ctx, r.t.dir, id, true);
+        expect([await state(r), stashList(r.wt).map((s) => s.oid)]).toEqual([before, [old]]);
+        await undoWrite(r.ctx, r.t.dir, id, false);
+        expect([await state(r), stashList(r.wt).length]).toEqual([after, 1]);
+        await undoWrite(r.ctx, r.t.dir, id, true);
+        expect([await state(r), stashList(r.wt).map((s) => s.oid)]).toEqual([before, [old]]);
+      });
+
+      it('refuses, changing nothing: the same lines in both, HEAD moved since, no stash', async () => {
+        const r = await mixed();
+        await expect(add(r, 'staged', ['o.txt'])).rejects.toMatchObject({ kind: 'NotFound', message: 'That stash is gone' });
+        await push(r, 'staged', ['m.txt']);
+        await r.t.write('m.txt', TEN.replace('1\n', 'uno\n'));
+        await r.t.stage('m.txt');
+        const before = [await state(r), stashList(r.wt)];
+        await expect(add(r, 'staged', ['m.txt'])).rejects.toMatchObject({ kind: 'Conflict', message: 'Can\'t add to "WIP on main: m.txt (staged)": m.txt has changes in both on or next to the same lines. Nothing changed' });
+        expect([await state(r), stashList(r.wt)]).toEqual(before);
+        await r.t.commit('Moved');
+        await expect(add(r, 'unstaged', ['n.txt'])).rejects.toMatchObject({ kind: 'InvalidInput', message: '"WIP on main: m.txt (staged)" was stashed on another commit (HEAD moved since): stash the changes on their own instead. Nothing changed' });
+      });
+    });
   });
 });

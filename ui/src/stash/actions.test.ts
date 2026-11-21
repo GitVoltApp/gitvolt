@@ -7,7 +7,7 @@ import { api } from '../api/client';
 import { useRuntime } from '../app/runtime';
 import { readWipDraft, writeWipDraft } from '../commit/draft';
 import { useToast } from '../ui/toastStore';
-import { applyStash, dropStash, stashPathsFor, stashPushFor } from './actions';
+import { addToStashFor, applyStash, dropStash, stashPathsFor, stashPushFor } from './actions';
 
 const ctx = { tabId: 't', repoId: 1, worktree: '/r' };
 const res = (outcome: unknown) => ({ outcome, journal: { undo: null, redo: null, undoBlocked: null, redoBlocked: null, banners: [] }, staging: { undo: null, redo: null, off: null }, wip: null });
@@ -46,6 +46,16 @@ describe('stashes', () => {
     expect(readWipDraft('/r', '/r').summary).toBe('The rest');
     push.mockResolvedValue(res({ status: 'nothingToStash' }) as never);
     await stashPathsFor(ctx, ['src'], 'unstaged');
+    expect(useToast.getState().message).toBe('No changes to stash');
+  });
+  it('an add sends the paths, the part and the latest stash, and leaves the draft', async () => {
+    writeWipDraft('/r', '/r', { summary: 'The rest', description: '' });
+    const push = vi.spyOn(api, 'stashPush').mockResolvedValue(res({ status: 'stashed', oid: 'abc' }) as never);
+    await addToStashFor(ctx, ['src'], 'unstaged', 'top');
+    expect(push).toHaveBeenCalledWith(1, '/r', '', ['src'], 'unstaged', 'top');
+    expect(readWipDraft('/r', '/r').summary).toBe('The rest');
+    push.mockResolvedValue(res({ status: 'nothingToStash' }) as never);
+    await addToStashFor(ctx, ['src/a.ts'], 'staged', 'top');
     expect(useToast.getState().message).toBe('No changes to stash');
   });
   it('apply, pop and drop send the oid; conflicts say where they went', async () => {

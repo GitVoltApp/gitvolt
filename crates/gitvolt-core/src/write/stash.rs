@@ -12,6 +12,10 @@
 //!   git's own resets the whole index first, and refuses then, losing what was staged. An index
 //!   part that's staged already is a no-op, and a staged part only goes into edited files by a
 //!   3-way merge (`Route`, `merged`).
+//! - Add (to the latest stash, a WIP list's part): the part is pushed, then folded into
+//!   stash@{0} (`fold`), each part 3-way merged with the stash's own; the combined stash is
+//!   stored and checked before the two go. Journaled: undo applies the part's own stash
+//!   (`StashMove.added`) and stores the old one back on top; redo adds again.
 //! - Apply: `git stash apply --index <oid>` (or without `--index` once confirmed); not journaled.
 //! - Pop: snapshot `before`, apply, and drop on a clean apply; journaled (undo restores
 //!   `before` and stores the stash back; redo pops again). A conflicting pop keeps the stash,
@@ -330,7 +334,7 @@ async fn unstaged_in(cli: &GitCli, root: &Path, scope: &[Bytes]) -> Result<Vec<B
 /// cleanup) is recorded here, and the error says so.
 async fn push_git(cx: &mut WriteCx<'_>, message: &str, scope: Option<Vec<Bytes>>, asked: (Option<&[String]>, Option<StashPart>)) -> Result<Option<(String, String)>, GbError> {
     let (paths, part) = asked;
-    let moved = |oid: String, message: String| StashMove { oid, message, created: true, without_index: false, paths: paths.map(<[String]>::to_vec), part };
+    let moved = |oid: String, message: String| StashMove { oid, message, created: true, without_index: false, paths: paths.map(<[String]>::to_vec), part, added: None };
     // What's staged in scope, read just before git's push (its index commit has the whole index).
     let staged: Vec<Change> = match &scope {
         Some(scope) => changes(&cx.api.cli, cx.root, &["diff-index", "--cached", "-r", "-z", "--no-renames", "HEAD"]).await?.into_iter().filter(|(p, _)| within(p, scope)).collect(),
@@ -679,7 +683,7 @@ async fn push_staged(cx: &mut WriteCx<'_>, message: &str, scope: &[Bytes]) -> Re
             // Both are in the stash: the files' unstaged edits, the index its staged changes.
             Err(put) => {
                 tracing::warn!(target: "gitvolt_core::write", "putting the staged changes back in the files: {put}");
-                cx.record_stash(StashMove { oid: stash, message: subject, created: true, without_index: false, paths: None, part: Some(StashPart::Staged) })?;
+                cx.record_stash(StashMove { oid: stash, message: subject, created: true, without_index: false, paths: None, part: Some(StashPart::Staged), added: None })?;
                 return Err(GbError { message: format!("The staged changes are stashed and out of the files, but still staged ({}): unstage them, or Undo", e.message), ..e });
             }
         }
@@ -978,7 +982,7 @@ impl WriteIntent for StashPush {
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<StashPushOutcome, GbError> {
         let Some((oid, subject)) = push(cx, &self.message, self.paths.as_deref(), self.part).await? else { return Ok(StashPushOutcome::NothingToStash) };
         // Written ahead of the relist's drop.
-        cx.record_stash(StashMove { oid: oid.clone(), message: subject.clone(), created: true, without_index: false, paths: self.paths.clone(), part: self.part })?;
+        cx.record_stash(StashMove { oid: oid.clone(), message: subject.clone(), created: true, without_index: false, paths: self.paths.clone(), part: self.part, added: None })?;
         let now = relist(cx, &oid, &subject, &self.message, &self.label()).await;
         if now != subject {
             cx.edit_entry(|e| {
@@ -988,6 +992,295 @@ impl WriteIntent for StashPush {
             })?;
         }
         Ok(StashPushOutcome::Stashed { oid })
+    }
+}
+
+// --- Add to the latest stash ---
+
+/// One side of a stash on its base: each changed file's `(base, new)` entries (`None`: absent).
+type Side = std::collections::BTreeMap<Bytes, (Option<Entry>, Option<Entry>)>;
+
+/// A stash's changes on its base: its index part, its worktree part, and its untracked files.
+#[derive(Default)]
+struct Parts {
+    i: Side,
+    w: Side,
+    u: std::collections::BTreeMap<Bytes, Entry>,
+}
+
+impl Parts {
+    fn paths(&self) -> std::collections::BTreeSet<Bytes> {
+        self.i.keys().chain(self.w.keys()).chain(self.u.keys()).cloned().collect()
+    }
+}
+
+/// A stash as git makes one: W on the base, its index part I (a commit on the base), and maybe
+/// its untracked files' commit U.
+struct Shape {
+    base: String,
+    index: String,
+    untracked: Option<String>,
+    parts: Parts,
+}
+
+/// Every file of `treeish`, as `(mode, oid)`.
+async fn ls_tree(cli: &GitCli, root: &Path, treeish: &str) -> Result<std::collections::BTreeMap<Bytes, Entry>, GbError> {
+    let out = cli.run(GitInvocation::new(root, ["ls-tree", "-r", "-z", treeish])).await?.stdout;
+    // `<mode> <type> <oid>\t<path>`.
+    Ok(out
+        .split(|b| *b == 0)
+        .filter_map(|r| {
+            let tab = r.iter().position(|b| *b == b'\t')?;
+            let meta = String::from_utf8_lossy(&r[..tab]);
+            let f: Vec<&str> = meta.split(' ').collect();
+            Some((r[tab + 1..].to_vec(), (f.first()?.to_string(), f.get(2)?.to_string())))
+        })
+        .collect())
+}
+
+async fn shape_of(cli: &GitCli, root: &Path, oid: &str) -> Result<Shape, GbError> {
+    let odd = || GbError::new(GbErrorKind::InvalidInput, "That stash isn't shaped as git makes one; nothing was added");
+    let parents = read_text(cli, root, &["show", "-s", "--format=%P", oid]).await?;
+    let (base, index, untracked) = match parents.split(' ').collect::<Vec<_>>().as_slice() {
+        [b, i] => (b.to_string(), i.to_string(), None),
+        [b, i, u] => (b.to_string(), i.to_string(), Some(u.to_string())),
+        _ => return Err(odd()),
+    };
+    if read_text(cli, root, &["show", "-s", "--format=%P", &index]).await? != base {
+        return Err(odd());
+    }
+    let side = async |to: &str| -> Result<Side, GbError> { Ok(pairs(cli, root, &["diff-tree", "-r", "-z", "--no-renames", &base, to]).await?.into_iter().map(|(p, b, n)| (p, (b, n))).collect()) };
+    let (i, w) = (side(&index).await?, side(oid).await?);
+    let u = match &untracked {
+        Some(u) => ls_tree(cli, root, u).await?,
+        None => Default::default(),
+    };
+    Ok(Shape { base, index, untracked, parts: Parts { i, w, u } })
+}
+
+/// Why `path` can't go into the stash `into` (its name).
+fn add_refusal(into: &str, path: &[u8], why: &str) -> GbError {
+    GbError::new(GbErrorKind::Conflict, format!("Can't add to \"{into}\": {} {why}. Nothing changed", String::from_utf8_lossy(path)))
+}
+
+/// Two stashes' changes combined on their common base (`combine`): each part's entries, and the
+/// untracked files of the new one that the old one lacks.
+struct Combined {
+    i: Side,
+    w: Side,
+    u: Vec<Change>,
+}
+
+/// Each part's files 3-way merged (`merged`), the old stash's changes as ours and the new ones
+/// as theirs; the untracked files' union. A file whose changes don't combine, or an untracked
+/// file in one that the other has as a change, is the refusal (`Ok(Err)`).
+async fn combine(cx: &WriteCx<'_>, old: &Parts, new: &Parts, into: &str) -> Result<Result<Combined, GbError>, GbError> {
+    let mut sides = [old.i.clone(), old.w.clone()];
+    for (out, (ours, theirs)) in sides.iter_mut().zip([(&old.i, &new.i), (&old.w, &new.w)]) {
+        for (p, (b, t)) in theirs {
+            let o = ours.get(p).map_or(b, |(_, o)| o);
+            let why = match merged(cx, o.as_ref(), b.as_ref(), t.as_ref()).await? {
+                Ok(e) => {
+                    out.insert(p.clone(), (b.clone(), e));
+                    continue;
+                }
+                Err(Clash::Lines) => "has changes in both on or next to the same lines",
+                Err(Clash::Binary) => "is a binary file changed in both",
+                Err(Clash::Link) => "is a symbolic link changed in both",
+                Err(Clash::Kind) => "is a file in one and a symbolic link in the other",
+                Err(Clash::Submodule) => "is a submodule changed in both",
+                Err(Clash::Whole) => "is added or deleted in one and changed in the other",
+            };
+            return Ok(Err(add_refusal(into, p, why)));
+        }
+    }
+    let tracked = |s: &Parts, p: &Bytes| s.i.contains_key(p) || s.w.contains_key(p);
+    if let Some(p) = old.u.keys().find(|p| tracked(new, p)).or_else(|| new.u.keys().find(|p| tracked(old, p))) {
+        return Ok(Err(add_refusal(into, p, "is untracked in one and tracked in the other")));
+    }
+    let mut u = Vec::new();
+    for (p, e) in &new.u {
+        match old.u.get(p) {
+            Some(o) if o != e => return Ok(Err(add_refusal(into, p, "is untracked in both, with different contents"))),
+            Some(_) => {}
+            None => u.push((p.clone(), Some(e.clone()))),
+        }
+    }
+    let [i, w] = sides;
+    Ok(Ok(Combined { i, w, u }))
+}
+
+/// What a push of `paths`' `part` would stash, for the files in `keys` only (the old stash's),
+/// picked as `push` picks them: Staged's staged changes as both parts; Unstaged's files
+/// (`unstaged_in`), their staged changes as the index part, the files as they are now as the
+/// worktree part, and the untracked ones.
+async fn predicted(cx: &WriteCx<'_>, paths: &[String], part: StashPart, keys: &std::collections::BTreeSet<Bytes>) -> Result<Parts, GbError> {
+    let (cli, root) = (&cx.api.cli, cx.root);
+    let scope = with_renames(cli, root, paths).await?;
+    let scope = match part {
+        StashPart::Staged => scope,
+        StashPart::Unstaged => renames_of(cli, root, unstaged_in(cli, root, &scope).await?).await?,
+    };
+    let ours = |p: &Bytes| keys.contains(p) && within(p, &scope);
+    let staged: Side = pairs(cli, root, &["diff-index", "--cached", "-r", "-z", "--no-renames", "HEAD"]).await?.into_iter().filter(|(p, _, _)| ours(p)).map(|(p, b, s)| (p, (b, s))).collect();
+    if part == StashPart::Staged {
+        return Ok(Parts { i: staged.clone(), w: staged, u: Default::default() });
+    }
+    // The files against HEAD (one whose stat alone changed is listed too), and the untracked ones.
+    let head: Vec<Pair> = pairs(cli, root, &["diff-index", "-r", "-z", "--no-renames", "HEAD"]).await?.into_iter().filter(|(p, _, _)| ours(p)).collect();
+    let listed = unstaged_in(cli, root, &keys.iter().filter(|p| ours(p)).cloned().collect::<Vec<_>>()).await?;
+    let untracked: Vec<Bytes> = listed.into_iter().filter(|p| !staged.contains_key(p) && !head.iter().any(|(h, _, _)| h == p)).collect();
+    let all: Vec<Bytes> = head.iter().map(|(p, _, _)| p.clone()).chain(untracked.iter().cloned()).collect();
+    let temp = TempIndex::new(cx)?;
+    let files = files_now(cx, &temp, &all).await?;
+    let w = head.into_iter().filter(|(p, b, _)| files.get(p) != b.as_ref()).map(|(p, b, _)| (p.clone(), (b, files.get(&p).cloned()))).collect();
+    let u = untracked.into_iter().filter_map(|p| files.get(&p).cloned().map(|e| (p, e))).collect();
+    Ok(Parts { i: staged, w, u })
+}
+
+/// The stash `new` folded into `old` (the stash `oid`, both on `old.base`): a stash commit
+/// shaped as git's, with `oid`'s message, identity and dates, checked to hold both before
+/// it's stored on top under `subject`. Returns it.
+async fn fold(cx: &mut WriteCx<'_>, old: &Shape, oid: &str, new: &str, subject: &str, into: &str) -> Result<String, GbError> {
+    #[cfg(test)]
+    if tests::FOLD_FAILS.lock().unwrap().iter().any(|r| r.as_path() == cx.root) {
+        return Err(GbError::other("folding fails (test)"));
+    }
+    let (cli, root) = (&cx.api.cli, cx.root);
+    let n = shape_of(cli, root, new).await?;
+    if n.base != old.base {
+        return Err(GbError::stale("HEAD moved during the stash"));
+    }
+    let c = combine(cx, &old.parts, &n.parts, into).await??;
+    let base = old.base.as_str();
+    let changes = |s: &Side| s.iter().map(|(p, (_, e))| (p.clone(), e.clone())).collect::<Vec<Change>>();
+    let (i, w) = (changes(&c.i), changes(&c.w));
+    let i_commit = commit_like(cx, &old.index, &tree_with(cx, base, &i.iter().collect::<Vec<_>>()).await?, &[base]).await?;
+    let untracked = match (&old.untracked, &n.untracked) {
+        (Some(o), Some(_)) if !c.u.is_empty() => Some(commit_like(cx, o, &tree_with(cx, o, &c.u.iter().collect::<Vec<_>>()).await?, &[]).await?),
+        (o, n) => o.clone().or_else(|| n.clone()),
+    };
+    let parents: Vec<&str> = [base, i_commit.as_str()].into_iter().chain(untracked.as_deref()).collect();
+    let stash = commit_like(cx, oid, &tree_with(cx, base, &w.iter().collect::<Vec<_>>()).await?, &parents).await?;
+    // Checked before anything goes: git's shape, each part both stashes' changes and nothing
+    // else, and both's untracked files.
+    let (cli, root) = (&cx.api.cli, cx.root);
+    let now = shape_of(cli, root, &stash).await?;
+    let differs = |s: &Side| s.iter().filter(|(_, (b, e))| b != e).map(|(p, (_, e))| (p.clone(), e.clone())).collect::<Vec<_>>();
+    let mut u = old.parts.u.clone();
+    u.extend(n.parts.u.clone());
+    if read_text(cli, root, &["show", "-s", "--format=%P", &stash]).await? != parents.join(" ") || differs(&now.parts.i) != differs(&c.i) || differs(&now.parts.w) != differs(&c.w) || now.parts.u != u {
+        return Err(GbError::other(format!("the combined stash {stash} doesn't hold both")));
+    }
+    let inv = cx.git_stash(["stash", "store", "-m", subject, stash.as_str()]);
+    cx.run_git(inv).await?;
+    cx.touch(ChangeKind::Stash);
+    Ok(stash)
+}
+
+/// An add's moves, written ahead of its drops: on the run's own entry, or (`entry`) on the
+/// entry a redo acts on, in place of the old ones.
+fn write_moves(cx: &mut WriteCx<'_>, entry: Option<u64>, moves: Vec<StashMove>) -> Result<(), GbError> {
+    match entry {
+        None => moves.into_iter().try_for_each(|m| cx.record_stash(m)),
+        Some(id) => edit(cx, id, |e| e.stashes = moves),
+    }
+}
+
+/// Adds `paths`' `part` to the stash `into` (stash@{0}, listed as `subject`): they're stashed
+/// (`push`, and its checks), then that stash is folded into `into` (`fold`); only once the
+/// combined one is stored and checked do the two go. A file whose changes don't combine is
+/// refused first, nothing changed. Returns the combined stash; `None`: nothing to stash.
+async fn add(cx: &mut WriteCx<'_>, into: &str, subject: &str, message: &str, paths: &[String], part: StashPart, entry: Option<u64>) -> Result<Option<String>, GbError> {
+    let name = user_message(subject).to_string();
+    let (cli, root) = (&cx.api.cli, cx.root);
+    if at(cli, root, 0).await.as_deref() != Some(into) {
+        return Err(GbError::stale("The latest stash changed; nothing was added"));
+    }
+    let old = shape_of(cli, root, into).await?;
+    if read_text(cli, root, &["rev-parse", "--verify", "-q", "HEAD^{commit}"]).await.ok().as_deref() != Some(old.base.as_str()) {
+        return Err(GbError::new(GbErrorKind::InvalidInput, format!("\"{name}\" was stashed on another commit (HEAD moved since): stash the changes on their own instead. Nothing changed")));
+    }
+    let keys = old.parts.paths();
+    if !keys.is_empty() {
+        combine(cx, &old.parts, &predicted(cx, paths, part, &keys).await?, &name).await??;
+    }
+    let Some((new, new_subject)) = push(cx, message, Some(paths), Some(part)).await? else { return Ok(None) };
+    let stash = match fold(cx, &old, into, &new, subject, &name).await {
+        Ok(s) => s,
+        Err(e) => {
+            // The changes are in a stash of their own, kept: Undo applies it, as a push's.
+            write_moves(cx, entry, vec![StashMove { oid: new, message: new_subject.clone(), created: true, without_index: false, paths: Some(paths.to_vec()), part: Some(part), added: None }])?;
+            return Err(GbError { message: format!("The changes are stashed on their own as \"{}\": they couldn't be added to \"{name}\" ({})", user_message(&new_subject), e.message), ..e });
+        }
+    };
+    let moves = vec![
+        StashMove { oid: stash.clone(), message: subject.to_string(), created: true, without_index: false, paths: Some(paths.to_vec()), part: Some(part), added: Some(new.clone()) },
+        StashMove { oid: into.to_string(), message: subject.to_string(), created: false, without_index: false, paths: None, part: None, added: None },
+    ];
+    write_moves(cx, entry, moves)?;
+    // Both are in the combined stash: one that stays listed is only logged.
+    for gone in [new.as_str(), into] {
+        if let Err(e) = drop_oid(cx, gone).await {
+            tracing::warn!(target: "gitvolt_core::write", "the stash {gone}, added to {stash}, stays listed: {e}");
+        }
+    }
+    forget_kept(cx, into);
+    Ok(Some(stash))
+}
+
+/// An add's undo: the added changes go back into the files (their own stash applied, as a
+/// push's undo), then the replaced stash is stored back on top and the combined one goes.
+async fn undo_add(cx: &mut WriteCx<'_>, combined: &StashMove, added: &str, replaced: &StashMove, without_index: bool) -> Result<(), GbError> {
+    subject_of(&cx.api.cli, cx.root, &combined.oid).await?;
+    if apply(cx, added, !without_index).await?.is_some() {
+        return Err(GbError::new(GbErrorKind::Conflict, "The stash's changes conflict; it was kept"));
+    }
+    // Both listed between the two, never neither. Already listed (a retried undo): not twice.
+    if subject_of(&cx.api.cli, cx.root, &replaced.oid).await.is_err() {
+        store(cx, replaced).await?;
+    }
+    drop_oid(cx, &combined.oid).await
+}
+
+/// "Add staged/unstaged changes to <the latest stash>", a WIP list's file's or folder's.
+pub(crate) struct StashAdd {
+    /// The latest stash as shown: still stash@{0} when the add runs, or it's refused.
+    pub into: String,
+    /// Its subject, which the combined stash keeps.
+    pub subject: String,
+    /// The message of the stash of the added changes alone (never listed after).
+    pub message: String,
+    pub paths: Vec<String>,
+    pub part: StashPart,
+}
+
+impl WriteIntent for StashAdd {
+    type Outcome = StashPushOutcome;
+    fn kind(&self) -> OpKind {
+        OpKind::Stash
+    }
+    fn label(&self) -> String {
+        format!("add to stash \"{}\"", user_message(&self.subject))
+    }
+    fn undo(&self) -> Option<UndoKind> {
+        Some(UndoKind::Stash)
+    }
+    async fn plan(&self, pre: &Pre<'_>) -> Result<Plan, GbError> {
+        if self.paths.is_empty() {
+            return Err(no_paths());
+        }
+        if at(&pre.api.cli, pre.root, 0).await.as_deref() != Some(self.into.as_str()) {
+            return Err(GbError::stale("The latest stash changed; nothing was added"));
+        }
+        refuse_stash_push_in_the_way(pre, "stash", Some(&self.paths)).await?;
+        Ok(Plan::default())
+    }
+    async fn run(&self, cx: &mut WriteCx<'_>) -> Result<StashPushOutcome, GbError> {
+        Ok(match add(cx, &self.into, &self.subject, &self.message, &self.paths, self.part, None).await? {
+            Some(oid) => StashPushOutcome::Stashed { oid },
+            None => StashPushOutcome::NothingToStash,
+        })
     }
 }
 
@@ -1077,9 +1370,33 @@ enum Route {
     /// get the worktree part's changes over the index part's, and the index stays.
     Rebased(String),
     /// A staged part only (W is I), its files edited since (a Staged part's unstaged edits): git's
-    /// merge refuses a file with local changes. Its changes go to the index as they are, and
-    /// into each file by a 3-way merge (`merged`).
-    Merge(Vec<Pair>),
+    /// merge refuses a file with local changes. Or an index part staged already in some files
+    /// and not in the others (a stash a staged part and an Unstaged part were added to), which
+    /// neither route takes. Each file's index entry goes to the index part's, and the file gets
+    /// the worktree part's changes on top of the entry it had by a 3-way merge (`merged`); the
+    /// untracked files are written.
+    Merge(Vec<Quad>, std::collections::BTreeMap<Bytes, Entry>),
+}
+
+/// A stash's file: its path, and its entries on the base, in the index part and in the
+/// worktree part (`None`: absent).
+type Quad = (Bytes, Option<Entry>, Option<Entry>, Option<Entry>);
+
+/// `Route::Merge` of the stash `oid`: its files (`b`, `i`: its base's and index part's trees),
+/// and its untracked ones.
+async fn merge_route(cli: &GitCli, root: &Path, oid: &str, b: &str, i: &str, untracked: Option<&str>) -> Result<Route, GbError> {
+    let mut files: std::collections::BTreeMap<Bytes, Quad> = std::collections::BTreeMap::new();
+    for (p, base, new) in pairs(cli, root, &["diff-tree", "-r", "-z", "--no-renames", b, i]).await? {
+        files.insert(p.clone(), (p, base.clone(), new, base));
+    }
+    for (p, base, new) in pairs(cli, root, &["diff-tree", "-r", "-z", "--no-renames", b, oid]).await? {
+        files.entry(p.clone()).or_insert_with(|| (p, base.clone(), base, None)).3 = new;
+    }
+    let untracked = match untracked {
+        Some(u) => ls_tree(cli, root, u).await?,
+        None => Default::default(),
+    };
+    Ok(Route::Merge(files.into_values().collect(), untracked))
 }
 
 async fn route(cx: &WriteCx<'_>, oid: &str) -> Result<Route, GbError> {
@@ -1094,55 +1411,78 @@ async fn route(cx: &WriteCx<'_>, oid: &str) -> Result<Route, GbError> {
     let [_, index, untracked @ ..] = parents.as_slice() else { return Ok(Route::Git) };
     let part = raw_names(cli, root, &["diff-tree", "-r", "--name-only", "--no-renames", "-z", &b, &i]).await?;
     let differs = async |from: &str| raw_names(cli, root, &["diff-index", "--cached", "--name-only", "--no-renames", "-z", from]).await;
-    if !differs(&i).await?.iter().any(|p| part.contains(p)) {
+    let not_i = differs(&i).await?;
+    if !not_i.iter().any(|p| part.contains(p)) {
         let again = commit_like(cx, oid, &i, &[index]).await?;
         let parents: Vec<&str> = [*index, again.as_str()].into_iter().chain(untracked.iter().copied()).collect();
         return Ok(Route::Rebased(commit_like(cx, oid, &w, &parents).await?));
     }
-    if w != i || !untracked.is_empty() || differs(&b).await?.iter().any(|p| part.contains(p)) {
+    let not_b = differs(&b).await?;
+    // Staged already in some files (at I), not in the others (at B).
+    if part.iter().all(|p| !not_i.contains(p) || !not_b.contains(p)) && part.iter().any(|p| !not_i.contains(p)) {
+        return merge_route(cli, root, oid, &b, &i, untracked.first().copied()).await;
+    }
+    if w != i || !untracked.is_empty() || not_b.iter().any(|p| part.contains(p)) {
         return Ok(Route::Git);
     }
     let edited = raw_names(cli, root, &["diff", "--name-only", "--no-renames", "--no-ext-diff", "--no-color", "-z"]).await?;
     if !edited.iter().any(|p| part.contains(p)) {
         return Ok(Route::Git);
     }
-    Ok(Route::Merge(pairs(cli, root, &["diff-tree", "-r", "-z", "--no-renames", &b, &i]).await?))
+    merge_route(cli, root, oid, &b, &i, None).await
 }
 
-/// `Route::Merge`: every file merged first (nothing changes on a clash), then the index part
-/// staged and the files written; a failure writing them puts the index back.
-async fn apply_merge(cx: &mut WriteCx<'_>, part: Vec<Pair>) -> Result<(), GbError> {
-    let paths: Vec<Bytes> = part.iter().map(|(p, _, _)| p.clone()).collect();
+/// `Route::Merge` of the stash `oid`: every file merged first (nothing changes on a refusal),
+/// then the index part staged and the files written; a failure writing them puts the index back.
+async fn apply_merge(cx: &mut WriteCx<'_>, oid: &str, part: Vec<Quad>, untracked: std::collections::BTreeMap<Bytes, Entry>) -> Result<(), GbError> {
+    let refuse = |p: &[u8], why: &str| GbError::new(GbErrorKind::Conflict, format!("The stash's changes don't go into {} as it is now: {why}; nothing changed", String::from_utf8_lossy(p)));
+    let base = format!("{oid}^1");
+    // The index entries that aren't the base's.
+    let staged: std::collections::HashMap<Bytes, Option<Entry>> = pairs(&cx.api.cli, cx.root, &["diff-index", "--cached", "-r", "-z", "--no-renames", &base]).await?.into_iter().map(|(p, _, s)| (p, s)).collect();
+    let paths: Vec<Bytes> = part.iter().map(|(p, ..)| p.clone()).chain(untracked.keys().cloned()).collect();
     let temp = TempIndex::new(cx)?;
     let files = files_now(cx, &temp, &paths).await?;
-    let mut out: Vec<Change> = Vec::new();
-    for (p, b, i) in &part {
-        match merged(cx, files.get(p), b.as_ref(), i.as_ref()).await? {
+    let (mut out, mut to, mut back): (Vec<Change>, Vec<Change>, Vec<Change>) = Default::default();
+    for (p, b, i, w) in &part {
+        let now = staged.get(p).cloned().unwrap_or_else(|| b.clone());
+        // The file's changes are on top of its index entry: the index part's, or the base's.
+        let from = if now == *i { i } else if now == *b { b } else { return Err(refuse(p, "it's staged otherwise")) };
+        match merged(cx, files.get(p), from.as_ref(), w.as_ref()).await? {
             Ok(e) => out.push((p.clone(), e)),
-            Err(_) => return Err(GbError::new(GbErrorKind::Conflict, format!("The stash's staged changes don't go into {} as it is now: it has edits on or next to the same lines; nothing changed", String::from_utf8_lossy(p)))),
+            Err(_) => return Err(refuse(p, "it has edits on or next to the same lines")),
+        }
+        if now != *i {
+            to.push((p.clone(), i.clone()));
+            back.push((p.clone(), now));
         }
     }
-    let len = part.iter().find_map(|(_, b, i)| b.as_ref().or(i.as_ref()).map(|e| e.1.len())).unwrap_or(40);
-    let info = |side: &dyn Fn(&Pair) -> Option<Entry>| {
+    for (p, e) in &untracked {
+        match files.get(p) {
+            None => out.push((p.clone(), Some(e.clone()))),
+            Some(f) if f == e => {}
+            Some(_) => return Err(refuse(p, "an untracked file is there already")),
+        }
+    }
+    let info = |changes: &[Change]| {
         let mut info = Vec::new();
-        for pair in &part {
-            let (mode, oid) = side(pair).unwrap_or_else(|| ("0".into(), "0".repeat(len)));
-            info.extend_from_slice(format!("{mode} {oid}\t").as_bytes());
-            info.extend_from_slice(&pair.0);
+        for (p, e) in changes {
+            let (mode, id) = e.clone().unwrap_or_else(|| ("0".into(), "0".repeat(oid.len())));
+            info.extend_from_slice(format!("{mode} {id}\t").as_bytes());
+            info.extend_from_slice(p);
             info.push(0);
         }
         info
     };
-    let inv = cx.git_stash(["update-index", "-z", "--index-info"]).stdin(info(&|(_, _, i)| i.clone()));
+    let inv = cx.git_stash(["update-index", "-z", "--index-info"]).stdin(info(&to));
     cx.run_git(inv).await?;
     cx.partial = true;
     cx.touch(ChangeKind::Index);
     if let Err(e) = write_files(cx, &temp, &out).await {
-        let inv = cx.git_stash(["update-index", "-z", "--index-info"]).stdin(info(&|(_, b, _)| b.clone()));
+        let inv = cx.git_stash(["update-index", "-z", "--index-info"]).stdin(info(&back));
         if let Err(back) = cx.run_git(inv).await {
-            tracing::warn!(target: "gitvolt_core::write", "unstaging the stash's staged changes again: {back}");
+            tracing::warn!(target: "gitvolt_core::write", "putting the index back after a failed apply: {back}");
         }
-        return Err(GbError { message: format!("The stash's staged changes couldn't be written to the files ({}); nothing changed", e.message), ..e });
+        return Err(GbError { message: format!("The stash's changes couldn't be written to the files ({}); nothing changed", e.message), ..e });
     }
     cx.touch(ChangeKind::Worktree);
     Ok(())
@@ -1159,7 +1499,7 @@ async fn apply(cx: &mut WriteCx<'_>, oid: &str, with_index: bool) -> Result<Opti
     let target = match route {
         Route::Git => oid.to_string(),
         Route::Rebased(copy) => copy,
-        Route::Merge(part) => return apply_merge(cx, part).await.map(|()| None),
+        Route::Merge(files, untracked) => return apply_merge(cx, oid, files, untracked).await.map(|()| None),
     };
     let aside = if with_index && unmerged_before == 0 && target == oid { index_aside(cx, oid).await? } else { None };
     let mut args = vec!["stash", "apply"];
@@ -1242,7 +1582,7 @@ impl WriteIntent for StashApply {
             None => {
                 if self.pop {
                     // Written ahead of the drop.
-                    cx.record_stash(StashMove { oid: self.oid.clone(), message: self.subject.clone(), created: false, without_index: self.without_index, paths: None, part: None })?;
+                    cx.record_stash(StashMove { oid: self.oid.clone(), message: self.subject.clone(), created: false, without_index: self.without_index, paths: None, part: None, added: None })?;
                     if let Err(e) = drop_oid(cx, &self.oid).await {
                         unrecord_if_listed(cx, &self.oid).await;
                         return Err(e);
@@ -1291,7 +1631,7 @@ impl WriteIntent for StashDrop {
     }
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<(), GbError> {
         // Written ahead of the drop: a crash between them leaves a banner.
-        cx.record_stash(StashMove { oid: self.oid.clone(), message: self.subject.clone(), created: false, without_index: false, paths: None, part: None })?;
+        cx.record_stash(StashMove { oid: self.oid.clone(), message: self.subject.clone(), created: false, without_index: false, paths: None, part: None, added: None })?;
         if let Err(e) = drop_oid(cx, &self.oid).await {
             if unrecord_if_listed(cx, &self.oid).await {
                 // Nothing changed: no entry.
@@ -1333,6 +1673,20 @@ fn edit(cx: &mut WriteCx<'_>, id: u64, f: impl FnOnce(&mut JournalEntry)) -> Res
 pub(crate) async fn undo_stash(cx: &mut WriteCx<'_>, entry: &JournalEntry, undo: bool, label: &str, without_index: bool) -> Result<(), GbError> {
     let moved = entry.stashes.first().cloned();
     match (moved, &entry.before) {
+        // An add: its own stash applied and the replaced one stored back; redo adds again.
+        (Some(m), _) if m.created && m.added.is_some() => {
+            let replaced = entry.stashes.get(1).filter(|r| !r.created).ok_or_else(|| GbError::other("the replaced stash isn't recorded"))?;
+            let added = m.added.as_deref().unwrap_or_default();
+            if undo {
+                return undo_add(cx, &m, added, replaced, without_index).await;
+            }
+            let (Some(paths), Some(part)) = (&m.paths, m.part) else { return Err(GbError::other("the added files aren't recorded")) };
+            let full = read_text(&cx.api.cli, cx.root, &["show", "-s", "--format=%B", added]).await?;
+            match add(cx, &replaced.oid, &replaced.message, user_message(&full), paths, part, Some(entry.id)).await? {
+                Some(_) => Ok(()),
+                None => Err(GbError::new(GbErrorKind::InvalidInput, "Nothing to stash")),
+            }
+        }
         // The stash itself is applied (a push of some paths too: what it holds, whatever
         // changed while it was made), with `--index` around any other staged files (`apply`).
         (Some(m), _) if m.created => {
@@ -1349,7 +1703,7 @@ pub(crate) async fn undo_stash(cx: &mut WriteCx<'_>, entry: &JournalEntry, undo:
                 let message = user_message(&full).to_string();
                 let Some((oid, subject)) = push(cx, &message, m.paths.as_deref(), m.part).await? else { return Err(GbError::new(GbErrorKind::InvalidInput, "Nothing to stash")) };
                 // Written ahead of the relist's drop.
-                let new = |subject: String| StashMove { oid: oid.clone(), message: subject, created: true, without_index: false, paths: m.paths.clone(), part: m.part };
+                let new = |subject: String| StashMove { oid: oid.clone(), message: subject, created: true, without_index: false, paths: m.paths.clone(), part: m.part, added: None };
                 edit(cx, entry.id, |e| {
                     if let Some(s) = e.stashes.first_mut() {
                         *s = new(subject.clone());
@@ -1429,12 +1783,17 @@ async fn request_subject(api: &Api, repo: u32, worktree: &str, oid: &str) -> Res
     subject_of(&api.cli, &root, oid).await
 }
 
-/// `stashPush`: an empty `message` names HEAD's branch, read first (and the paths and part, if any).
-pub(crate) async fn stash_push(api: &Api, repo: u32, worktree: &str, message: String, paths: Option<Vec<String>>, part: Option<StashPart>) -> Result<WriteResult<StashPushOutcome>, GbError> {
+/// `stashPush`: an empty `message` names HEAD's branch, read first (and the paths and part, if
+/// any). `into`: the part is added to that stash, the latest (`StashAdd`).
+pub(crate) async fn stash_push(api: &Api, repo: u32, worktree: &str, message: String, paths: Option<Vec<String>>, part: Option<StashPart>, into: Option<String>) -> Result<WriteResult<StashPushOutcome>, GbError> {
     let h = api.handle(repo)?;
     let root = api.worktree_dir(&h, worktree).await?;
     let branch = blocking(move || crate::write::head_state(&gix::open(&root).map_err(gix_err)?)).await?.branch;
-    run_write(api, repo, worktree, Default::default(), StashPush::new(message, branch.as_deref(), paths, part)).await
+    let push = StashPush::new(message, branch.as_deref(), paths, part);
+    let Some(into) = into else { return run_write(api, repo, worktree, Default::default(), push).await };
+    let (Some(paths), Some(part)) = (push.paths, push.part) else { return Err(GbError::new(GbErrorKind::InvalidInput, "Only some files' staged or unstaged changes can be added to a stash")) };
+    let subject = request_subject(api, repo, worktree, &into).await?;
+    run_write(api, repo, worktree, Default::default(), StashAdd { into, subject, message: push.message, paths, part }).await
 }
 
 /// `stashApply` (Apply, or Pop).
@@ -1460,6 +1819,8 @@ mod tests {
 
     /// Roots whose `narrow` fails (its fallback, git's own stash kept).
     pub(super) static NARROW_FAILS: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mutex::new(Vec::new());
+    /// Roots whose add fails to fold (its fallback: the added part kept as its own stash).
+    pub(super) static FOLD_FAILS: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mutex::new(Vec::new());
 
     fn repo() -> TestRepo {
         let r = TestRepo::new();
@@ -2033,7 +2394,7 @@ mod tests {
                     let id = j.begin(NewEntry { label: label.into(), kind: crate::events::OpKind::Stash, head_before: HeadState::default(), undo: UndoKind::Stash }, now);
                     let e = j.entry_mut(id).unwrap();
                     e.owner = Some(dead.clone());
-                    e.stashes.push(StashMove { oid, message: format!("On main: {}", &label[label.find('"').unwrap() + 1..label.len() - 1]), created, without_index: false, paths: None, part: None });
+                    e.stashes.push(StashMove { oid, message: format!("On main: {}", &label[label.find('"').unwrap() + 1..label.len() - 1]), created, without_index: false, paths: None, part: None, added: None });
                 }
             })
             .unwrap();
@@ -2146,7 +2507,7 @@ mod tests {
         let id = j.begin(NewEntry { label: "pop stash \"x\"".into(), kind: crate::events::OpKind::Stash, head_before: HeadState::default(), undo: UndoKind::Stash }, 1);
         let e = j.entry_mut(id).unwrap();
         e.before = Some(Snapshot { commit: "c0ffee".into(), paths: vec!["a.txt".into()], untracked: Vec::new(), ..Default::default() });
-        e.stashes.push(StashMove { oid: "1a2b".into(), message: "On main: x".into(), created: false, without_index: false, paths: None, part: None });
+        e.stashes.push(StashMove { oid: "1a2b".into(), message: "On main: x".into(), created: false, without_index: false, paths: None, part: None, added: None });
         j.recover_unless(|_| false);
         j.resolve_stash_moves(&[], |_| true);
         assert_eq!(j.kept.len(), 1);
@@ -2570,6 +2931,221 @@ mod tests {
             assert_eq!(e.message, format!("Can't stash the staged changes alone: {why}. Stash its unstaged changes first, or stage them. Nothing was stashed"));
         }
         assert_eq!(RepoState::capture(&r), held);
+    }
+
+    // --- Add to the latest stash ---
+
+    async fn add_part(api: &crate::api::Api, id: u32, r: &TestRepo, paths: &[&str], part: &str) -> Result<serde_json::Value, crate::error::GbError> {
+        send(api, json!({"method": "stashPush", "params": {"repo": id, "worktree": wt(r), "message": "", "paths": paths, "part": part, "into": top(r)}})).await
+    }
+
+    fn list(r: &TestRepo) -> String {
+        r.git(&["stash", "list", "--format=%gs"])
+    }
+
+    /// Staged files, unstaged ones, untracked ones and a folder's, added one after another: one
+    /// stash, its name and place kept, each part in its own; the other files untouched. Its Pop
+    /// puts each back where it was (a folder's staged part, kept staged, and the others not).
+    #[tokio::test(flavor = "multi_thread")]
+    async fn parts_added_to_the_latest_stash_pop_back_where_they_were() {
+        let env = WriteEnv::new();
+        let r = mixed();
+        let id = open(&env.api, &r).await;
+        let status = || r.git(&["status", "--porcelain", "-uall"]);
+        let before = RepoState::capture(&r);
+        stash_part(&env.api, id, &r, &["s.txt"], "staged").await.unwrap();
+        let name = "On main: WIP on main: s.txt (staged)";
+        for (paths, part, left, held) in [
+            (vec!["o.txt"], "staged", "MM d/x.txt\nMM m.txt\n M u.txt\n?? d/y.txt\n?? n.txt", ("M\to.txt\nM\ts.txt", "")),
+            (vec!["u.txt", "n.txt"], "unstaged", "MM d/x.txt\nMM m.txt\n?? d/y.txt", ("M\to.txt\nM\ts.txt", "M\tu.txt")),
+            (vec!["d"], "unstaged", "M  d/x.txt\nMM m.txt", ("M\td/x.txt\nM\to.txt\nM\ts.txt", "M\td/x.txt\nM\tu.txt")),
+        ] {
+            let out = add_part(&env.api, id, &r, &paths, part).await.unwrap();
+            assert_eq!(out["outcome"]["oid"].as_str(), Some(top(&r).as_str()));
+            assert_eq!(status(), left, "{paths:?}: the others untouched");
+            assert_eq!(list(&r), name, "{paths:?}: one stash, its name kept");
+            assert_eq!(parts(&r), (held.0.to_string(), held.1.to_string()), "{paths:?}");
+            assert_eq!(r.git(&["rev-parse", "stash@{0}^1", "stash@{0}^2^"]), r.git(&["rev-parse", "HEAD", "HEAD"]), "on HEAD, as git's");
+        }
+        assert_eq!(r.git(&["ls-tree", "-r", "--name-only", "stash@{0}^3"]), "d/y.txt\nn.txt");
+        assert_eq!(journal(&env.api, id, &r).await["undo"]["label"], "add to stash \"WIP on main: s.txt (staged)\"");
+        pop_top(&env.api, id, &r).await;
+        assert_eq!(RepoState::capture(&r), before);
+    }
+
+    /// A file in both: each part 3-way merged with its own, in either order of the parts; on
+    /// the same lines, refused with nothing changed and no entry.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_file_in_both_combines_or_refuses() {
+        let env = WriteEnv::new();
+        for (first, then) in [("staged", "unstaged"), ("unstaged", "staged")] {
+            let r = mixed();
+            let id = open(&env.api, &r).await;
+            let before = RepoState::capture(&r);
+            stash_part(&env.api, id, &r, &["m.txt"], first).await.unwrap();
+            add_part(&env.api, id, &r, &["m.txt"], then).await.unwrap();
+            assert!(!r.git(&["status", "--porcelain"]).contains("m.txt"), "{first}, then {then}: both parts stashed");
+            assert_eq!(r.git(&["show", "stash@{0}^2:m.txt"]), TEN.replacen("1\n", "one\n", 1).trim_end());
+            assert_eq!(r.git(&["show", "stash@{0}:m.txt"]), TEN.replacen("1\n", "one\n", 1).replace("8\n", "eight\n").trim_end());
+            pop_top(&env.api, id, &r).await;
+            assert_eq!(RepoState::capture(&r), before, "{first}, then {then}");
+        }
+        let r = TestRepo::new();
+        identity(&r);
+        r.write("a.txt", TEN);
+        r.git(&["add", "."]);
+        r.git(&["commit", "-q", "-m", "one"]);
+        r.write("a.txt", &TEN.replacen("1\n", "one\n", 1));
+        r.git(&["add", "a.txt"]);
+        let id = open(&env.api, &r).await;
+        stash_part(&env.api, id, &r, &["a.txt"], "staged").await.unwrap();
+        r.write("a.txt", &TEN.replace("8\n", "eight\n"));
+        r.git(&["add", "a.txt"]);
+        let before = RepoState::capture(&r);
+        add_part(&env.api, id, &r, &["a.txt"], "staged").await.unwrap();
+        assert_eq!(r.git(&["show", "stash@{0}^2:a.txt"]), TEN.replacen("1\n", "one\n", 1).replace("8\n", "eight\n").trim_end(), "both staged changes");
+        let s = journal(&env.api, id, &r).await;
+        send(&env.api, json!({"method": "undo", "params": {"repo": id, "worktree": wt(&r), "entry": s["undo"]["entry"]}})).await.unwrap();
+        assert_eq!(RepoState::capture(&r), before);
+        // The same lines in both: refused, nothing changed, no entry.
+        for (staged, unstaged) in [("1\n2\n", "uno\n2\n"), ("1\n2\n", "1\ntwo\n")] {
+            r.write("a.txt", &TEN.replacen(staged, unstaged, 1));
+            r.git(&["add", "a.txt"]);
+            let held = RepoState::capture(&r);
+            let label = journal(&env.api, id, &r).await["undo"]["label"].clone();
+            let e = add_part(&env.api, id, &r, &["a.txt"], "staged").await.unwrap_err();
+            assert_eq!((e.kind, e.message.as_str()), (GbErrorKind::Conflict, "Can't add to \"WIP on main: a.txt (staged)\": a.txt has changes in both on or next to the same lines. Nothing changed"), "{unstaged:?}");
+            assert_eq!(RepoState::capture(&r), held, "{unstaged:?}");
+            assert_eq!(journal(&env.api, id, &r).await["undo"]["label"], label, "no entry");
+        }
+    }
+
+    /// Untracked files: the stash's and the new ones together; the same file with other
+    /// contents refuses.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn untracked_files_join_the_stashs_own() {
+        let env = WriteEnv::new();
+        let r = repo();
+        r.write("n.txt", "n\n");
+        let id = open(&env.api, &r).await;
+        let before = RepoState::capture(&r);
+        stash_part(&env.api, id, &r, &["n.txt"], "unstaged").await.unwrap();
+        r.write("z.txt", "z\n");
+        let with_z = RepoState::capture(&r);
+        add_part(&env.api, id, &r, &["z.txt"], "unstaged").await.unwrap();
+        assert_eq!(r.git(&["ls-tree", "-r", "--name-only", "stash@{0}^3"]), "n.txt\nz.txt");
+        assert_eq!(r.git(&["status", "--porcelain", "-uall"]), "");
+        r.write("n.txt", "another n\n");
+        let held = RepoState::capture(&r);
+        let e = add_part(&env.api, id, &r, &["n.txt"], "unstaged").await.unwrap_err();
+        assert_eq!(e.message, "Can't add to \"WIP on main: n.txt (unstaged)\": n.txt is untracked in both, with different contents. Nothing changed");
+        assert_eq!(RepoState::capture(&r), held);
+        std::fs::remove_file(r.path().join("n.txt")).unwrap();
+        // Undo, then Pop: each step back exactly.
+        let s = journal(&env.api, id, &r).await;
+        send(&env.api, json!({"method": "undo", "params": {"repo": id, "worktree": wt(&r), "entry": s["undo"]["entry"]}})).await.unwrap();
+        assert_eq!(RepoState::capture(&r), with_z);
+        std::fs::remove_file(r.path().join("z.txt")).unwrap();
+        pop_top(&env.api, id, &r).await;
+        assert_eq!(RepoState::capture(&r), before);
+    }
+
+    /// Undo puts the very same stash back on top and the changes back in the files; redo adds
+    /// them again, the same combined stash; undo again.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn adding_undoes_and_redoes_exactly() {
+        let env = WriteEnv::new();
+        for (paths, part) in [(vec!["o.txt"], "staged"), (vec!["d", "u.txt"], "unstaged"), (vec!["m.txt"], "unstaged")] {
+            let r = mixed();
+            let id = open(&env.api, &r).await;
+            stash_part(&env.api, id, &r, &["s.txt", "m.txt"], "staged").await.unwrap();
+            let before = RepoState::capture(&r);
+            add_part(&env.api, id, &r, &paths, part).await.unwrap();
+            let after = RepoState::capture(&r);
+            let held = (parts(&r), stashed(&r));
+            undo_redo(&env.api, id, &r, &before, |s| {
+                assert_eq!((&s.files, &s.index, &s.untracked), (&after.files, &after.index, &after.untracked), "{paths:?}");
+                assert_eq!(list(&r), "On main: WIP on main: s.txt and 1 more (staged)");
+                assert_eq!((parts(&r), stashed(&r)), held, "{paths:?}");
+            })
+            .await;
+            let s = journal(&env.api, id, &r).await;
+            send(&env.api, json!({"method": "undo", "params": {"repo": id, "worktree": wt(&r), "entry": s["undo"]["entry"]}})).await.unwrap();
+            assert_eq!(RepoState::capture(&r), before, "{paths:?}");
+        }
+    }
+
+    /// Refused, nothing changed: HEAD moved since the stash, no stash, one that's no longer the
+    /// latest, and the part alone (no paths).
+    #[tokio::test(flavor = "multi_thread")]
+    async fn adding_is_refused_off_the_stashs_base_or_without_it() {
+        let env = WriteEnv::new();
+        let r = mixed();
+        let id = open(&env.api, &r).await;
+        let held = RepoState::capture(&r);
+        let into = |oid: &str| json!({"method": "stashPush", "params": {"repo": id, "worktree": wt(&r), "message": "", "paths": ["o.txt"], "part": "staged", "into": oid}});
+        let e = send(&env.api, into("0".repeat(40).as_str())).await.unwrap_err();
+        assert_eq!((e.kind, e.message.as_str()), (GbErrorKind::NotFound, "That stash is gone"));
+        assert_eq!(RepoState::capture(&r), held);
+        stash_part(&env.api, id, &r, &["s.txt"], "staged").await.unwrap();
+        let older = top(&r);
+        stash_part(&env.api, id, &r, &["u.txt"], "unstaged").await.unwrap();
+        let held = RepoState::capture(&r);
+        let e = send(&env.api, into(&older)).await.unwrap_err();
+        assert_eq!(e.message, "The latest stash changed; nothing was added");
+        let e = send(&env.api, json!({"method": "stashPush", "params": {"repo": id, "worktree": wt(&r), "message": "", "into": top(&r)}})).await.unwrap_err();
+        assert_eq!(e.kind, GbErrorKind::InvalidInput);
+        assert_eq!(RepoState::capture(&r), held);
+        r.git(&["commit", "-q", "-m", "staged ones"]);
+        let held = RepoState::capture(&r);
+        let e = add_part(&env.api, id, &r, &["m.txt"], "unstaged").await.unwrap_err();
+        assert_eq!((e.kind, e.message.as_str()), (GbErrorKind::InvalidInput, "\"WIP on main: u.txt (unstaged)\" was stashed on another commit (HEAD moved since): stash the changes on their own instead. Nothing changed"));
+        assert_eq!(RepoState::capture(&r), held);
+    }
+
+    /// A fold that fails once the part is stashed: the latest stash stays as it was, the part
+    /// is kept in a stash of its own, and Undo puts it back.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_failed_fold_keeps_the_part_in_its_own_stash() {
+        let env = WriteEnv::new();
+        let r = mixed();
+        let id = open(&env.api, &r).await;
+        stash_part(&env.api, id, &r, &["s.txt"], "staged").await.unwrap();
+        let (before, old) = (RepoState::capture(&r), top(&r));
+        FOLD_FAILS.lock().unwrap().push(crate::platform::fs::canonicalize(r.path()).unwrap());
+        let e = add_part(&env.api, id, &r, &["o.txt"], "staged").await.unwrap_err();
+        assert_eq!(e.message, "The changes are stashed on their own as \"WIP on main: o.txt (staged)\": they couldn't be added to \"WIP on main: s.txt (staged)\" (folding fails (test))");
+        assert_eq!(list(&r), "On main: WIP on main: o.txt (staged)\nOn main: WIP on main: s.txt (staged)");
+        assert_eq!(r.git(&["rev-parse", "stash@{1}"]), old);
+        let s = journal(&env.api, id, &r).await;
+        send(&env.api, json!({"method": "undo", "params": {"repo": id, "worktree": wt(&r), "entry": s["undo"]["entry"]}})).await.unwrap();
+        assert_eq!(RepoState::capture(&r), before);
+    }
+
+    /// The combined stash is shaped as git's: a terminal's `git stash pop --index` restores it.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_terminals_pop_restores_a_combined_stash() {
+        let env = WriteEnv::new();
+        let r = TestRepo::new();
+        identity(&r);
+        for f in ["a.txt", "b.txt", "c.txt"] {
+            r.write(f, TEN);
+        }
+        r.git(&["add", "."]);
+        r.git(&["commit", "-q", "-m", "one"]);
+        r.write("a.txt", &TEN.replacen("1\n", "one\n", 1));
+        r.write("b.txt", &TEN.replacen("1\n", "one\n", 1));
+        r.git(&["add", "."]);
+        r.write("c.txt", &TEN.replace("8\n", "eight\n"));
+        r.write("n.txt", "n\n");
+        let id = open(&env.api, &r).await;
+        let before = RepoState::capture(&r);
+        stash_part(&env.api, id, &r, &["a.txt"], "staged").await.unwrap();
+        add_part(&env.api, id, &r, &["b.txt"], "staged").await.unwrap();
+        add_part(&env.api, id, &r, &["c.txt", "n.txt"], "unstaged").await.unwrap();
+        assert_eq!(r.git(&["status", "--porcelain", "-uall"]), "");
+        r.git(&["stash", "pop", "-q", "--index"]);
+        assert_eq!(RepoState::capture(&r), before);
     }
 
     // --- Repo safety ---

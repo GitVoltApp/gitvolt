@@ -32,6 +32,9 @@ export interface StashMove {
   paths?: string[];
   /** Only their staged or unstaged part: its redo takes that part again. */
   part?: StashPart;
+  /** An Add to the latest stash: the stash of just the added part, which the undo applies before
+   *  storing the replaced stash (the entry's next move) back. */
+  added?: string;
 }
 
 export type KeptReason =

@@ -26,6 +26,13 @@ export async function stashPathsFor(ctx: WriteCtx, paths: string[], part: StashP
   if (out?.status === 'nothingToStash') useToast.getState().show('No changes to stash');
 }
 
+/** Add to stash: a WIP file's or folder's part, as its Stash takes it, joins the latest stash
+ * (`into`, its oid as shown), which keeps its name and its place at the top. */
+export async function addToStashFor(ctx: WriteCtx, paths: string[], part: StashPart, into: string): Promise<void> {
+  const out = await runWrite(ctx, () => api.stashPush(ctx.repoId, ctx.worktree, '', paths, part, into));
+  if (out?.status === 'nothingToStash') useToast.getState().show('No changes to stash');
+}
+
 /** Apply or Pop, by the stash's oid. "Apply without restoring what was staged?" is
  * runWrite's question; a refused answer resends with `withoutIndex`. */
 export async function applyStash(ctx: WriteCtx, oid: string, pop: boolean): Promise<void> {

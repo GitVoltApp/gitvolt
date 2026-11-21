@@ -100,6 +100,11 @@ pub struct StashMove {
     /// Only their staged or unstaged part (a WIP list's Stash): its redo takes that part again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub part: Option<crate::write::stash::StashPart>,
+    // --- an Add to the latest stash ---
+    /// The stash of just the added changes (dropped once folded in, never listed after): the
+    /// undo applies it, then stores the replaced stash (the entry's next move) back on top.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub added: Option<String>,
 }
 
 /// Why a stash is kept.

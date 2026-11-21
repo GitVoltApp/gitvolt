@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const op = vi.hoisted(() => ({ inProgress: null as string | null, open: null as { staged: boolean } | null }));
-vi.mock('./actions', async (orig) => ({ ...(await orig<typeof import('./actions')>()), stashPathsFor: vi.fn() }));
+vi.mock('./actions', async (orig) => ({ ...(await orig<typeof import('./actions')>()), stashPathsFor: vi.fn(), addToStashFor: vi.fn() }));
 vi.mock('../stage/keyActions', () => ({
   openWipFile: () => (op.open ? { ctx: { tabId: 't', repoId: 1, worktree: '/r' }, staged: op.open.staged, file: { path: 'src/a.ts', oldPath: null } } : null),
 }));
@@ -11,12 +11,13 @@ vi.mock('../app/tabStores', async (orig) => ({
 }));
 import type { FileChange } from '../api/gen/FileChange';
 import { getAction } from '../app/actions';
+import { useRuntime } from '../app/runtime';
 import type { CommitTarget, FileTarget, FolderTarget, MenuEnv, SidebarTarget, WipTarget } from '../menu/menuEnv';
 import { buildMenu } from '../menu/registry';
 import type { MenuRow } from '../menu/types';
 import { COMMIT_QUEUED, stagingKey, useStaging } from '../stage/store';
-import { stashPathsFor } from './actions';
-import './feature';
+import { addToStashFor, stashPathsFor } from './actions';
+import { shortStashName } from './feature';
 
 const env = { write: { tabId: 't', repoId: 1, worktree: '/r' } } as unknown as MenuEnv;
 const ids = (rows: ReturnType<typeof buildMenu>) => rows.flatMap((r) => (r.kind === 'action' ? [r.id] : []));
@@ -85,6 +86,49 @@ describe('stash rows', () => {
         expect(stashPathsFor).toHaveBeenLastCalledWith({ tabId: 't', repoId: 1, worktree: '/r' }, ['src/a.ts'], part);
       }
       op.open = null;
+    });
+
+    describe('Add to stash', () => {
+      const stashes = (message: string | null) =>
+        useRuntime.setState({ tabs: { t: { sidebar: message === null ? { stashes: [] } : { stashes: [{ index: 0, id: 's0', message, time: 0 }, { index: 1, id: 's1', message: 'On main: older', time: 0 }] } } } } as never);
+      beforeEach(() => vi.mocked(addToStashFor).mockClear());
+
+      it('offers the list’s part to the latest stash, by name, beside Stash; none without a stash', () => {
+        stashes('On main: WIP on main: src/b.ts (staged)');
+        for (const [staged, part] of [[false, 'unstaged'], [true, 'staged']] as const) {
+          const rows = buildMenu('file', file({ staged }), env);
+          expect(ids(rows).slice(ids(rows).indexOf('file.stash'), ids(rows).indexOf('file.stash') + 2)).toEqual(['file.stash', 'file.stashAdd']);
+          const row = find(rows, 'file.stashAdd');
+          expect(row?.label).toBe(`Add ${part} changes to "WIP on main: src/b.ts (staged)"`);
+          expect(row?.tooltip).toBe(`Add this file’s ${part} changes to the latest stash, "WIP on main: src/b.ts (staged)", which keeps its name and its place (you can undo this)`);
+          row?.run();
+          expect(addToStashFor).toHaveBeenLastCalledWith({ tabId: 't', repoId: 1, worktree: '/r' }, ['src/a.ts'], part, 's0');
+          const f = find(buildMenu('folder', folder([{ path: 'src/a.ts', status: 'M' }], staged), env), 'folder.stashAdd');
+          expect(f?.label).toBe(`Add ${part} changes in src/ to "WIP on main: src/b.ts (staged)"`);
+          f?.run();
+          expect(addToStashFor).toHaveBeenLastCalledWith({ tabId: 't', repoId: 1, worktree: '/r' }, ['src'], part, 's0');
+        }
+        stashes(null);
+        expect(find(buildMenu('file', file({}), env), 'file.stashAdd')).toBeUndefined();
+        expect(find(buildMenu('folder', folder([{ path: 'src/a.ts', status: 'M' }]), env), 'folder.stashAdd')).toBeUndefined();
+      });
+
+      it('cuts a long name short', () => {
+        expect(shortStashName('On main: Fix x')).toBe('Fix x');
+        expect(shortStashName('On main: WIP on main: src/components/deeply/nested/file.ts (unstaged)')).toBe('WIP on main: src/components/dee…');
+      });
+
+      it('is off as Stash is: mid-merge, while a commit is queued, over a conflicted file', () => {
+        stashes('On main: x');
+        op.inProgress = 'rebase';
+        expect(find(buildMenu('file', file({}), env), 'file.stashAdd')?.disabledReason).toBe('Finish or abort the rebase first');
+        op.inProgress = null;
+        useStaging.setState({ committing: { [stagingKey(1, '/r')]: true } });
+        expect(find(buildMenu('file', file({ staged: true }), env), 'file.stashAdd')?.disabledReason).toBe(COMMIT_QUEUED);
+        useStaging.setState({ committing: {} });
+        const f = find(buildMenu('folder', folder([{ path: 'src/a.ts', status: 'M' }, { path: 'src/b.ts', status: 'U' }]), env), 'folder.stashAdd');
+        expect(f?.disabledReason).toBe('Resolve the conflicted files in src/ first');
+      });
     });
 
     it('is off mid-merge and while a commit is queued, as Stage and Discard are', () => {

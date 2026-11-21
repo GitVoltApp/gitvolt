@@ -8,12 +8,12 @@ import type { HandlerTable } from '../transport';
 import { gbError } from '../engine/errors';
 import { readCommit } from '../engine/read/commitText';
 import { fail } from '../engine/read/seam';
-import type { JournalEntry } from '../engine/write/journal';
+import type { JournalEntry, StashMove } from '../engine/write/journal';
 import { readHead } from '../engine/write/refs';
 import { runWrite, type WriteCx, type WriteIntent } from '../engine/write/run';
 import { writeTarget } from '../engine/write/seam';
 import { createSnapshot, restoreSnapshot, untrackedAmong } from '../engine/write/snapshot';
-import { applyInTheWay, applyStash, dropStash, pushInTheWay, pushStaged, pushStash, repositoryInTheWay, stashList, stashPaths, storeStash, subjectOf, userMessage, type StashApplied } from '../engine/write/stash';
+import { applyInTheWay, applyStash, combineParts, dropStash, foldStash, predictParts, pushInTheWay, pushStaged, pushStash, repositoryInTheWay, stashList, stashPaths, stashShape, storeStash, subjectOf, userMessage, type StashApplied } from '../engine/write/stash';
 import { dirty, statusEntries } from '../engine/write/status';
 import type { WriteWt } from '../engine/write/seam';
 import { NO_EXPECT } from './stage';
@@ -72,16 +72,82 @@ async function withRenames(wt: WriteWt, paths: string[]): Promise<string[]> {
   return out;
 }
 
+/** Unstaged's files: those with unstaged changes, and the untracked ones (the core's `unstaged_in`). */
+async function picked(wt: WriteWt, scope: string[]): Promise<string[]> {
+  return (await statusEntries(wt.repo, wt.root)).filter((e) => within(e.path, scope) && e.worktree !== '.').map((e) => e.path);
+}
+
 /** `git stash push`; with `paths`, a WIP file's or folder's Stash, narrowed to them, and with
  *  `part` that part of their changes only (the core's `push`). */
 async function pushSome(cx: WriteCx, wt: WriteWt, message: string, paths: string[] | null, part: StashPart | null = null) {
   const scope = paths === null ? null : await withRenames(wt, paths);
   if (scope === null || part === null) return pushStash(wt, cx.ident(), message, { untracked: 'untracked', paths: scope, narrow: scope !== null });
   if (part === 'staged') return pushStaged(wt, cx.ident(), message, scope);
-  // Unstaged: the files with unstaged changes, and the untracked ones (the core's `unstaged_in`).
-  const picked = (await statusEntries(wt.repo, wt.root)).filter((e) => within(e.path, scope) && e.worktree !== '.').map((e) => e.path);
-  if (picked.length === 0) return null;
-  return pushStash(wt, cx.ident(), message, { untracked: 'untracked', paths: await withRenames(wt, picked), narrow: true, keepStaged: true });
+  const files = await picked(wt, scope);
+  if (files.length === 0) return null;
+  return pushStash(wt, cx.ident(), message, { untracked: 'untracked', paths: await withRenames(wt, files), narrow: true, keepStaged: true });
+}
+
+/** The core's `add`: `paths`' `part` stashed (`pushSome`), then folded into `into` (stash@{0});
+ *  a file whose changes don't combine refuses first, nothing changed. `entry`: a redo's, whose
+ *  moves it replaces. The combined stash, or null when there was nothing to stash. */
+async function addTo(cx: WriteCx, into: string, subject: string, message: string, paths: string[], part: StashPart, entry: number | null): Promise<string | null> {
+  const wt = cx.wt;
+  const name = userMessage(subject);
+  if (stashList(wt)[0]?.oid !== into) fail('Stale', 'The latest stash changed; nothing was added');
+  const old = await stashShape(wt, into);
+  if (readHead(wt).oid !== old.base) fail('InvalidInput', `"${name}" was stashed on another commit (HEAD moved since): stash the changes on their own instead. Nothing changed`);
+  const keys = new Set([...old.parts.i.keys(), ...old.parts.w.keys(), ...old.parts.u.keys()]);
+  if (keys.size > 0) {
+    const scope = await withRenames(wt, paths);
+    await combineParts(wt, old.parts, await predictParts(wt, part === 'staged' ? scope : await withRenames(wt, await picked(wt, scope)), part, keys), name);
+  }
+  const s = await pushSome(cx, wt, message, paths, part);
+  cx.command('stash', ...(part === 'staged' ? ['create', message] : ['push', '--include-untracked', '-m', message, '--', ...paths]));
+  if (s === null) return null;
+  for (const k of ['stash', 'worktree', 'index'] as const) cx.touch(k);
+  const record = (moves: StashMove[]) => {
+    if (entry === null) for (const m of moves) cx.recordStash(m);
+    else edit(cx, entry, (e) => {
+      e.stashes = moves;
+    });
+  };
+  let combined: string;
+  try {
+    combined = await foldStash(wt, cx.ident(), old, into, s.oid, subject, name);
+  } catch (e) {
+    // The changes are in a stash of their own, kept: Undo applies it, as a push's.
+    record([{ oid: s.oid, message: s.subject, created: true, withoutIndex: false, paths, part }]);
+    const why = (e as GbError).message;
+    throw { ...(e as GbError), message: `The changes are stashed on their own as "${userMessage(s.subject)}": they couldn't be added to "${name}" (${why})` };
+  }
+  cx.command('stash', 'store', '-m', subject, combined);
+  record([
+    { oid: combined, message: subject, created: true, withoutIndex: false, paths, part, added: s.oid },
+    { oid: into, message: subject, created: false, withoutIndex: false },
+  ]);
+  dropStash(wt, s.oid);
+  dropStash(wt, into);
+  forgetKept(cx, into);
+  return combined;
+}
+
+function add(into: string, subject: string, message: string, paths: string[], part: StashPart): WriteIntent<StashPushOutcome> {
+  return {
+    kind: 'stash',
+    label: () => `add to stash "${userMessage(subject)}"`,
+    undo: () => 'stash',
+    plan: async (pre) => {
+      if (paths.length === 0) fail('InvalidInput', 'No files to stash');
+      if (stashList(pre.wt)[0]?.oid !== into) fail('Stale', 'The latest stash changed; nothing was added');
+      refuseInTheWay(await pushInTheWay(pre.wt, (await dirty(pre.wt.repo, pre.wt.root)).tracked, await withRenames(pre.wt, paths)), 'stash');
+      return {};
+    },
+    run: async (cx) => {
+      const oid = await addTo(cx, into, subject, message, paths, part, null);
+      return oid === null ? { status: 'nothingToStash' } : { status: 'stashed', oid };
+    },
+  };
 }
 
 function push(message: string, paths: string[] | null, part: StashPart | null): WriteIntent<StashPushOutcome> {
@@ -176,6 +242,27 @@ const conflictKept = () => gbError('Conflict', "The stash's changes conflict; it
 export async function undoStash(cx: WriteCx, entry: JournalEntry, undo: boolean, label: string, withoutIndex: boolean): Promise<void> {
   const wt = cx.wt;
   const moved = entry.stashes[0] ?? null;
+  // An add: its own stash applied and the replaced one stored back; redo adds again.
+  if (moved?.created && moved.added) {
+    const replaced = entry.stashes[1];
+    if (!replaced || replaced.created) fail('Other', "the replaced stash isn't recorded");
+    if (undo) {
+      subjectOf(wt, moved.oid);
+      cx.touch('worktree');
+      cx.touch('index');
+      const r = await applyStash(wt, moved.added, !withoutIndex);
+      const error = applyError(r);
+      if (error) throw error;
+      if (r.kind === 'conflicts') throw conflictKept();
+      if (!stashList(wt).some((s) => s.oid === replaced.oid)) storeStash(wt, cx.ident(), replaced.oid, replaced.message);
+      dropStash(wt, moved.oid);
+      cx.touch('stash');
+      return;
+    }
+    const full = (await readCommit(wt.repo, moved.added)).rawMessage.trimEnd();
+    if ((await addTo(cx, replaced.oid, replaced.message, userMessage(full), moved.paths ?? [], moved.part ?? 'staged', entry.id)) === null) fail('InvalidInput', 'Nothing to stash');
+    return;
+  }
   if (moved?.created) {
     if (undo) {
       subjectOf(wt, moved.oid);
@@ -248,12 +335,15 @@ export async function undoStash(cx: WriteCx, entry: JournalEntry, undo: boolean,
 }
 
 export const stashHandlers: Pick<HandlerTable, 'stashPush' | 'stashApply' | 'stashDrop'> = {
-  stashPush: async ({ repo, worktree, message, paths, part }, ctx) => {
-    const branch = readHead(await writeTarget(ctx, repo, worktree)).branch;
+  stashPush: async ({ repo, worktree, message, paths, part, into }, ctx) => {
+    const wt = await writeTarget(ctx, repo, worktree);
+    const branch = readHead(wt).branch;
     const on = `WIP on ${branch ?? '(no branch)'}`;
     const named = paths && paths.length > 0 ? `${on}: ${paths[0]}${paths.length > 1 ? ` and ${paths.length - 1} more` : ''}${part ? ` (${part})` : ''}` : on;
     const m = message.trim() === '' ? named : message;
-    return runWrite(ctx, repo, worktree, NO_EXPECT, push(m, paths ?? null, part ?? null));
+    if (!into) return runWrite(ctx, repo, worktree, NO_EXPECT, push(m, paths ?? null, part ?? null));
+    if (!paths || !part) fail('InvalidInput', "Only some files' staged or unstaged changes can be added to a stash");
+    return runWrite(ctx, repo, worktree, NO_EXPECT, add(into, subjectOf(wt, into), m, paths, part));
   },
   stashApply: async ({ repo, worktree, oid, pop, withoutIndex }, ctx) => {
     const subject = subjectOf(await writeTarget(ctx, repo, worktree), oid);

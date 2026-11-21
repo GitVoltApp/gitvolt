@@ -7,13 +7,14 @@
 import type { GbError } from '../../../api/gen/GbError';
 import { gbError, gitFailure } from '../errors';
 import { parentOf } from '../memfs';
+import { readCommitHeaders } from '../objects';
 import { compareBytewise, isBinaryHead, latin1 } from '../read/bytes';
 import { AttrReader, markerSizeOf } from '../read/attributes';
 import { gitSubject, readCommit } from '../read/commitText';
 import type { IndexEntry, IndexStat } from '../read/indexFile';
 import { diffLines, splitLines, unifiedHunks, type DiffHunk } from '../read/lineDiff';
 import { fail } from '../read/seam';
-import { diffTrees, listFiles, MODE_GITLINK, MODE_LINK, readBlobBytes, type FileEntry, type TreeChange } from '../read/trees';
+import { diffTrees, listFiles, MODE_GITLINK, MODE_LINK, readBlobBytes, readRaw, type FileEntry, type TreeChange } from '../read/trees';
 import { checkoutEntry, fileAt, kind, readFileState, removeWorktreePath, repoWithin, throughLink } from './files';
 import { keepStat, loadIndex, saveIndex, stage0Of, unmergedOf } from './index';
 import { conflictCount, mergeLines } from './mergeFile';
@@ -446,9 +447,12 @@ export async function applyStash(wt: WriteWt, oid: string, withIndex: boolean): 
     const holds = (p: string, e: FileEntry | null) => sameEntry(now.get(p) ?? null, e);
     if (part.every((c) => holds(c.path, c.new))) {
       [base, indexPart] = [i, false];
+    } else if (part.every((c) => holds(c.path, c.new) || holds(c.path, c.old)) && part.some((c) => holds(c.path, c.new))) {
+      // Staged already in some files, not in the others (a stash parts were added to).
+      return applyPatch(wt, entries, await stashFiles(wt, b, i, oid), u === undefined ? new Map() : await listFiles(wt.repo, u));
     } else if (iTree === w.tree && u === undefined && part.every((c) => holds(c.path, c.old))) {
       const edited = new Set((await statusEntries(wt.repo, wt.root)).filter((s) => s.kind !== 'untracked' && s.worktree !== '.').map((s) => s.path));
-      if (part.some((c) => edited.has(c.path))) return applyPatch(wt, entries, part);
+      if (part.some((c) => edited.has(c.path))) return applyPatch(wt, entries, await stashFiles(wt, b, i, oid), new Map());
     }
   }
   const patched = indexPart ? await indexPatch(wt, entries.filter((e) => !e.intentToAdd), b, i) : null;
@@ -513,18 +517,45 @@ export async function applyStash(wt: WriteWt, oid: string, withIndex: boolean): 
   return { kind: 'applied' };
 }
 
-/** `Route::Merge`: the staged part onto the index as it is, and into each file by a 3-way merge,
- *  every file merged first; nothing changes on a refusal. */
-async function applyPatch(wt: WriteWt, entries: IndexEntry[], part: TreeChange[]): Promise<StashApplied> {
+/** A stash's file: its entries on the base (`b`), in the index part and in the worktree part. */
+interface StashFile {
+  path: string;
+  b: FileEntry | null;
+  i: FileEntry | null;
+  w: FileEntry | null;
+}
+
+async function stashFiles(wt: WriteWt, b: string, i: string, w: string): Promise<StashFile[]> {
+  const files = new Map<string, StashFile>();
+  for (const c of await diffTrees(wt.repo, b, i)) files.set(c.path, { path: c.path, b: c.old, i: c.new, w: c.old });
+  for (const c of await diffTrees(wt.repo, b, w)) files.set(c.path, { ...(files.get(c.path) ?? { path: c.path, b: c.old, i: c.old }), w: c.new });
+  return [...files.values()].sort((x, y) => compareBytewise(x.path, y.path));
+}
+
+/** `Route::Merge`: each file's index entry to the index part's, and the file the worktree part's
+ *  changes on top of the entry it had (the index part's or the base's) by a 3-way merge; the
+ *  untracked files written. Every file merged first; nothing changes on a refusal. */
+async function applyPatch(wt: WriteWt, entries: IndexEntry[], part: StashFile[], untracked: Map<string, FileEntry>): Promise<StashApplied> {
   const now = stage0Of(entries);
   const files = new Map<string, FileEntry | null>();
+  const refuse = (p: string, why: string): StashApplied => ({ kind: 'refused', error: gbError('Conflict', `The stash's changes don't go into ${p} as it is now: ${why}; nothing changed`) });
   let next = [...entries];
   for (const c of part) {
-    const file = await mergeEntry(wt, await fileEntry(wt, c.path), c.old, c.new);
-    if ('clash' in file) return { kind: 'refused', error: gbError('Conflict', `The stash's staged changes don't go into ${c.path} as it is now: it has edits on or next to the same lines; nothing changed`) };
+    const cur = now.get(c.path);
+    const idx = cur ? { mode: cur.mode, oid: cur.oid } : null;
+    const from = sameEntry(idx, c.i) ? c.i : sameEntry(idx, c.b) ? c.b : undefined;
+    if (from === undefined) return refuse(c.path, "it's staged otherwise");
+    const file = await mergeEntry(wt, await fileEntry(wt, c.path), from, c.w);
+    if ('clash' in file) return refuse(c.path, 'it has edits on or next to the same lines');
     files.set(c.path, file.entry);
+    if (sameEntry(idx, c.i)) continue;
     next = next.filter((x) => x.path !== c.path);
-    if (c.new) next.push(keepStat(now, { path: c.path, mode: c.new.mode, oid: c.new.oid, stage: 0 }));
+    if (c.i) next.push(keepStat(now, { path: c.path, mode: c.i.mode, oid: c.i.oid, stage: 0 }));
+  }
+  for (const [p, e] of untracked) {
+    const f = await fileEntry(wt, p);
+    if (f === null) files.set(p, e);
+    else if (!sameEntry(f, e)) return refuse(p, 'an untracked file is there already');
   }
   for (const [p, e] of files) {
     if (e === null) removeWorktreePath(wt, p);
@@ -532,6 +563,125 @@ async function applyPatch(wt: WriteWt, entries: IndexEntry[], part: TreeChange[]
   }
   await saveIndex(wt, next);
   return { kind: 'applied' };
+}
+
+// --- Add to the latest stash (the core's `combine`, `predicted` and `fold`) ---
+
+/** One side of a stash on its base: each changed file's entries. */
+type Side = Map<string, { base: FileEntry | null; now: FileEntry | null }>;
+
+/** A stash's changes on its base: its index part, its worktree part, its untracked files. */
+export interface StashParts {
+  i: Side;
+  w: Side;
+  u: Map<string, FileEntry>;
+}
+
+export interface StashShape {
+  base: string;
+  index: string;
+  untracked: string | null;
+  parts: StashParts;
+}
+
+const sideOf = async (wt: WriteWt, a: string, b: string): Promise<Side> => new Map((await diffTrees(wt.repo, a, b)).map((c) => [c.path, { base: c.old, now: c.new }]));
+
+export async function stashShape(wt: WriteWt, oid: string): Promise<StashShape> {
+  const [base, index, untracked, ...more] = (await readCommit(wt.repo, oid)).parents;
+  if (index === undefined || more.length > 0 || (await readCommit(wt.repo, index)).parents.join(' ') !== base) fail('InvalidInput', "That stash isn't shaped as git makes one; nothing was added");
+  const u = untracked === undefined ? new Map<string, FileEntry>() : new Map(await listFiles(wt.repo, untracked));
+  return { base, index, untracked: untracked ?? null, parts: { i: await sideOf(wt, base, index), w: await sideOf(wt, base, oid), u } };
+}
+
+const WHY: Record<Clash, string> = {
+  lines: 'has changes in both on or next to the same lines',
+  binary: 'is a binary file changed in both',
+  link: 'is a symbolic link changed in both',
+  kind: 'is a file in one and a symbolic link in the other',
+  submodule: 'is a submodule changed in both',
+  whole: 'is added or deleted in one and changed in the other',
+};
+const addRefusal = (into: string, path: string, why: string) => gbError('Conflict', `Can't add to "${into}": ${path} ${why}. Nothing changed`);
+
+/** Each part's files 3-way merged, the old stash's changes as ours, the new ones as theirs; the
+ *  untracked files' union. Throws the refusal for a file whose changes don't combine. */
+export async function combineParts(wt: WriteWt, old: StashParts, add: StashParts, into: string): Promise<StashParts> {
+  const sides: Side[] = [new Map(old.i), new Map(old.w)];
+  for (const [k, [ours, theirs]] of ([[old.i, add.i], [old.w, add.w]] as const).entries()) {
+    for (const [p, { base, now }] of theirs) {
+      const o = ours.has(p) ? ours.get(p)!.now : base;
+      const r = await mergeEntry(wt, o, base, now);
+      if ('clash' in r) throw addRefusal(into, p, WHY[r.clash]);
+      sides[k].set(p, { base, now: r.entry });
+    }
+  }
+  const tracked = (s: StashParts, p: string) => s.i.has(p) || s.w.has(p);
+  const cross = [...old.u.keys()].find((p) => tracked(add, p)) ?? [...add.u.keys()].find((p) => tracked(old, p));
+  if (cross !== undefined) throw addRefusal(into, cross, 'is untracked in one and tracked in the other');
+  const u = new Map(old.u);
+  for (const [p, e] of add.u) {
+    const o = old.u.get(p);
+    if (o && !sameEntry(o, e)) throw addRefusal(into, p, 'is untracked in both, with different contents');
+    u.set(p, e);
+  }
+  return { i: sides[0], w: sides[1], u };
+}
+
+/** What a push of `scope`'s `part` would stash, for the files in `keys` only (the core's
+ *  `predicted`): Staged's staged changes as both parts; Unstaged's (`scope` its picked files)
+ *  staged changes as the index part, the files as they are as the worktree part, and the
+ *  untracked ones. */
+export async function predictParts(wt: WriteWt, scope: string[], part: 'staged' | 'unstaged', keys: Set<string>): Promise<StashParts> {
+  const headFiles = await listFiles(wt.repo, readHead(wt).oid!);
+  const index = stage0Of((await loadIndex(wt)).filter((e) => !e.intentToAdd));
+  const out: StashParts = { i: new Map(), w: new Map(), u: new Map() };
+  for (const p of [...keys].filter(inScope(scope))) {
+    const base = headFiles.get(p) ?? null;
+    const at = index.get(p);
+    const staged = at ? { mode: at.mode, oid: at.oid } : null;
+    if (!sameEntry(base, staged)) out.i.set(p, { base, now: staged });
+    if (part === 'staged') {
+      if (!sameEntry(base, staged)) out.w.set(p, { base, now: staged });
+      continue;
+    }
+    const file = await fileEntry(wt, p);
+    if (base === null && staged === null) {
+      if (file) out.u.set(p, file);
+    } else if (!sameEntry(base, file)) out.w.set(p, { base, now: file });
+  }
+  return out;
+}
+
+/** git's `commit-tree` of `tree` with `of`'s message, author and committer. */
+async function commitLike(wt: WriteWt, of: string, tree: string, parents: string[]): Promise<string> {
+  const raw = await readRaw(wt.repo, of);
+  const h = readCommitHeaders(raw!.bytes);
+  const text = (b: Uint8Array) => new TextDecoder().decode(b);
+  return writeCommitObject(wt.repo, { tree, parents, author: text(h.author), committer: text(h.committer), message: text(h.messageBytes) });
+}
+
+/** The stash `add` folded into `old` (the stash `oid`, on the same base): W, I and U as git
+ *  shapes them, with `oid`'s message, identity and dates, stored on top as `subject`. */
+export async function foldStash(wt: WriteWt, ident: string, old: StashShape, oid: string, add: string, subject: string, into: string): Promise<string> {
+  const n = await stashShape(wt, add);
+  if (n.base !== old.base) fail('Stale', 'HEAD moved during the stash');
+  const c = await combineParts(wt, old.parts, n.parts, into);
+  const treeOf = async (side: Side) => {
+    const files = new Map(await listFiles(wt.repo, old.base));
+    for (const [p, { now }] of side) {
+      if (now) files.set(p, now);
+      else files.delete(p);
+    }
+    return writeTreeOf(wt.repo, [...files].map(([path, e]) => ({ path, mode: e.mode, oid: e.oid })));
+  };
+  const i = await commitLike(wt, old.index, await treeOf(c.i), [old.base]);
+  let untracked = old.untracked ?? n.untracked;
+  if (old.untracked !== null && n.untracked !== null && c.u.size > old.parts.u.size) {
+    untracked = await commitLike(wt, old.untracked, await writeTreeOf(wt.repo, [...c.u].map(([path, e]) => ({ path, mode: e.mode, oid: e.oid }))), []);
+  }
+  const w = await commitLike(wt, oid, await treeOf(c.w), [old.base, i, ...(untracked === null ? [] : [untracked])]);
+  storeStash(wt, ident, w, subject);
+  return w;
 }
 
 // The safety review's C1 and C2 (precheck.rs): a stash that writes a file where a folder holding a
