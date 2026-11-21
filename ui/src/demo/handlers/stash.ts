@@ -1,6 +1,7 @@
 // Stashes (write/stash.rs): identity is the stash commit's id, never a list position.
 // Push and pop and drop are journaled (UndoKind::Stash); apply isn't (the stash is kept).
 import type { GbError } from '../../api/gen/GbError';
+import type { StashPart } from '../../api/gen/StashPart';
 import type { StashApplyOutcome } from '../../api/gen/StashApplyOutcome';
 import type { StashPushOutcome } from '../../api/gen/StashPushOutcome';
 import type { HandlerTable } from '../transport';
@@ -12,7 +13,7 @@ import { readHead } from '../engine/write/refs';
 import { runWrite, type WriteCx, type WriteIntent } from '../engine/write/run';
 import { writeTarget } from '../engine/write/seam';
 import { createSnapshot, restoreSnapshot, untrackedAmong } from '../engine/write/snapshot';
-import { applyInTheWay, applyStash, dropStash, pushInTheWay, pushStash, repositoryInTheWay, stashList, stashPaths, storeStash, subjectOf, userMessage, type StashApplied } from '../engine/write/stash';
+import { applyInTheWay, applyStash, dropStash, pushInTheWay, pushStaged, pushStash, repositoryInTheWay, stashList, stashPaths, storeStash, subjectOf, userMessage, type StashApplied } from '../engine/write/stash';
 import { dirty, statusEntries } from '../engine/write/status';
 import type { WriteWt } from '../engine/write/seam';
 import { NO_EXPECT } from './stage';
@@ -71,29 +72,36 @@ async function withRenames(wt: WriteWt, paths: string[]): Promise<string[]> {
   return out;
 }
 
-/** `git stash push`; with `paths`, a WIP file's or folder's Stash, narrowed to them (the core's `push`). */
-async function pushSome(cx: WriteCx, wt: WriteWt, message: string, paths: string[] | null) {
+/** `git stash push`; with `paths`, a WIP file's or folder's Stash, narrowed to them, and with
+ *  `part` that part of their changes only (the core's `push`). */
+async function pushSome(cx: WriteCx, wt: WriteWt, message: string, paths: string[] | null, part: StashPart | null = null) {
   const scope = paths === null ? null : await withRenames(wt, paths);
-  return pushStash(wt, cx.ident(), message, { untracked: 'untracked', paths: scope, narrow: scope !== null });
+  if (scope === null || part === null) return pushStash(wt, cx.ident(), message, { untracked: 'untracked', paths: scope, narrow: scope !== null });
+  if (part === 'staged') return pushStaged(wt, cx.ident(), message, scope);
+  // Unstaged: the files with unstaged changes, and the untracked ones (the core's `unstaged_in`).
+  const picked = (await statusEntries(wt.repo, wt.root)).filter((e) => within(e.path, scope) && e.worktree !== '.').map((e) => e.path);
+  if (picked.length === 0) return null;
+  return pushStash(wt, cx.ident(), message, { untracked: 'untracked', paths: await withRenames(wt, picked), narrow: true, keepStaged: true });
 }
 
-function push(message: string, paths: string[] | null): WriteIntent<StashPushOutcome> {
+function push(message: string, paths: string[] | null, part: StashPart | null): WriteIntent<StashPushOutcome> {
   return {
     kind: 'stash',
     label: () => `stash "${firstLine(message)}"`,
     undo: () => 'stash',
     plan: async (pre) => {
       if (paths?.length === 0) fail('InvalidInput', 'No files to stash');
+      if (part !== null && paths === null) fail('InvalidInput', "Only some files' staged or unstaged changes can be stashed");
       const scope = paths === null ? null : await withRenames(pre.wt, paths);
       refuseInTheWay(await pushInTheWay(pre.wt, (await dirty(pre.wt.repo, pre.wt.root)).tracked, scope), 'stash');
       return {};
     },
     run: async (cx) => {
-      const s = await pushSome(cx, cx.wt, message, paths);
-      cx.command('stash', 'push', '--include-untracked', '-m', message, ...(paths === null ? [] : ['--', ...paths]));
+      const s = await pushSome(cx, cx.wt, message, paths, part);
+      cx.command('stash', ...(part === 'staged' ? ['create', message] : ['push', '--include-untracked', '-m', message, ...(paths === null ? [] : ['--', ...paths])]));
       if (s === null) return { status: 'nothingToStash' };
       for (const k of ['stash', 'worktree', 'index'] as const) cx.touch(k);
-      cx.recordStash({ oid: s.oid, message: s.subject, created: true, withoutIndex: false, ...(paths && { paths }) });
+      cx.recordStash({ oid: s.oid, message: s.subject, created: true, withoutIndex: false, ...(paths && { paths }), ...(part && { part }) });
       relistGuard(cx, s.oid, s.subject, message, `stash "${firstLine(message)}"`);
       return { status: 'stashed', oid: s.oid };
     },
@@ -184,13 +192,14 @@ export async function undoStash(cx: WriteCx, entry: JournalEntry, undo: boolean,
     const full = (await readCommit(wt.repo, moved.oid)).rawMessage.trimEnd();
     const message = userMessage(full);
     const paths = moved.paths ?? null;
-    const s = await pushSome(cx, wt, message, paths);
+    const part = moved.part ?? null;
+    const s = await pushSome(cx, wt, message, paths, part);
     if (s === null) fail('InvalidInput', 'Nothing to stash');
     cx.touch('stash');
     cx.touch('worktree');
     cx.touch('index');
     edit(cx, entry.id, (e) => {
-      e.stashes[0] = { oid: s.oid, message: s.subject, created: true, withoutIndex: false, ...(paths && { paths }) };
+      e.stashes[0] = { oid: s.oid, message: s.subject, created: true, withoutIndex: false, ...(paths && { paths }), ...(part && { part }) };
     });
     relistGuard(cx, s.oid, s.subject, message, label);
     return;
@@ -239,12 +248,12 @@ export async function undoStash(cx: WriteCx, entry: JournalEntry, undo: boolean,
 }
 
 export const stashHandlers: Pick<HandlerTable, 'stashPush' | 'stashApply' | 'stashDrop'> = {
-  stashPush: async ({ repo, worktree, message, paths }, ctx) => {
+  stashPush: async ({ repo, worktree, message, paths, part }, ctx) => {
     const branch = readHead(await writeTarget(ctx, repo, worktree)).branch;
     const on = `WIP on ${branch ?? '(no branch)'}`;
-    const named = paths && paths.length > 0 ? `${on}: ${paths[0]}${paths.length > 1 ? ` and ${paths.length - 1} more` : ''}` : on;
+    const named = paths && paths.length > 0 ? `${on}: ${paths[0]}${paths.length > 1 ? ` and ${paths.length - 1} more` : ''}${part ? ` (${part})` : ''}` : on;
     const m = message.trim() === '' ? named : message;
-    return runWrite(ctx, repo, worktree, NO_EXPECT, push(m, paths ?? null));
+    return runWrite(ctx, repo, worktree, NO_EXPECT, push(m, paths ?? null, part ?? null));
   },
   stashApply: async ({ repo, worktree, oid, pop, withoutIndex }, ctx) => {
     const subject = subjectOf(await writeTarget(ctx, repo, worktree), oid);

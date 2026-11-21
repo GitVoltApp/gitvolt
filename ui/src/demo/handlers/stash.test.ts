@@ -3,6 +3,7 @@ import type { AppEvent } from '../../api/gen/AppEvent';
 import { fakeCtx, makeTestRepo } from '../engine/read/testkit';
 import { runWrite } from '../engine/write/run';
 import { mainWt } from '../engine/write/seam';
+import { loadIndex } from '../engine/write/index';
 import { stashList, stashPaths } from '../engine/write/stash';
 import { statusEntries } from '../engine/write/status';
 import { stashHandlers as h, undoStash } from './stash';
@@ -263,5 +264,102 @@ describe('undoStash', () => {
     const drop = ctx.writes.journal(t.dir).undoTop()!;
     await undoWrite(ctx, t.dir, drop.id, true);
     expect(stashList(wt)).toEqual([{ oid, subject: 'On main: Fix x' }]);
+  });
+
+  describe("a WIP list's part", () => {
+    const TEN = '1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n';
+    /** m.txt mixed (line 1 staged, line 8 edited further), o.txt staged, n.txt untracked. */
+    async function mixed() {
+      const t = await makeTestRepo();
+      await t.write('m.txt', TEN);
+      await t.write('o.txt', 'o\n');
+      await t.commit('Base');
+      await t.write('m.txt', TEN.replace('1\n', 'one\n'));
+      await t.stage('m.txt');
+      await t.write('m.txt', TEN.replace('1\n', 'one\n').replace('8\n', 'eight\n'));
+      await t.write('o.txt', 'o staged\n');
+      await t.stage('o.txt');
+      await t.write('n.txt', 'n\n');
+      return { t, ctx: fakeCtx(t.repo), wt: mainWt(t.repo) };
+    }
+    type T = Awaited<ReturnType<typeof mixed>>;
+    const state = async ({ t, wt }: T) => ({
+      status: await status(t),
+      m: t.memfs.existsSync(`${t.dir}/m.txt`, false) ? t.memfs.readFileSync(`${t.dir}/m.txt`, 'utf8') : null,
+      index: (await loadIndex(wt)).map((e) => `${e.path} ${e.oid}`),
+    });
+    const push = (r: T, part: 'staged' | 'unstaged', paths = ['m.txt']) => h.stashPush({ repo: 1, worktree: r.t.dir, message: '', paths, part }, r.ctx);
+
+    it('a Staged stash takes the staged part only, the unstaged edit kept; undo puts it back, redo takes it again', async () => {
+      const r = await mixed();
+      const before = await state(r);
+      const out = await push(r, 'staged');
+      const e = r.ctx.writes.journal(r.t.dir).undoTop()!;
+      expect([out.journal.undo?.label, stashList(r.wt)[0].subject, e.stashes[0].part]).toEqual(['stash "WIP on main: m.txt (staged)"', 'On main: WIP on main: m.txt (staged)', 'staged']);
+      const after = await state(r);
+      expect([after.status, after.m]).toEqual([['.M m.txt', 'M. o.txt', '?? n.txt'], TEN.replace('8\n', 'eight\n')]);
+      await undoWrite(r.ctx, r.t.dir, e.id, true);
+      expect(await state(r)).toEqual(before);
+      await undoWrite(r.ctx, r.t.dir, e.id, false);
+      expect(await state(r)).toEqual(after);
+      expect((await push(r, 'staged', ['n.txt'])).outcome).toEqual({ status: 'nothingToStash' });
+    });
+
+    it('an Unstaged stash takes the unstaged part and untracked files, the staged part kept staged', async () => {
+      const r = await mixed();
+      const before = await state(r);
+      await push(r, 'unstaged', ['m.txt', 'n.txt', 'o.txt']);
+      const e = r.ctx.writes.journal(r.t.dir).undoTop()!;
+      const after = await state(r);
+      expect([after.status, after.m, stashList(r.wt)[0].subject]).toEqual([['M. m.txt', 'M. o.txt'], TEN.replace('1\n', 'one\n'), 'On main: WIP on main: m.txt and 2 more (unstaged)']);
+      await undoWrite(r.ctx, r.t.dir, e.id, true);
+      expect(await state(r)).toEqual(before);
+      await undoWrite(r.ctx, r.t.dir, e.id, false);
+      expect(await state(r)).toEqual(after);
+      expect((await push(r, 'unstaged', ['o.txt'])).outcome).toEqual({ status: 'nothingToStash' });
+    });
+
+    it("pops a mixed file's two stashes back in either order", async () => {
+      for (const pushed of [['staged', 'unstaged'], ['unstaged', 'staged']] as const) {
+        for (const first of [0, 1]) {
+          const r = await mixed();
+          const before = await state(r);
+          const oids: string[] = [];
+          for (const part of pushed) oids.push(((await push(r, part)).outcome as { oid: string }).oid);
+          expect((await status(r.t)).some((l) => l.endsWith('m.txt'))).toBe(false);
+          for (const oid of first === 0 ? oids : [...oids].reverse()) {
+            expect((await h.stashApply({ repo: 1, worktree: r.t.dir, oid, pop: true }, r.ctx)).outcome).toEqual({ status: 'applied' });
+          }
+          expect(await state(r)).toEqual(before);
+        }
+      }
+    });
+
+    it('refuses a Staged stash whose file has edits on the same lines, changing nothing', async () => {
+      const r = await mixed();
+      await r.t.write('m.txt', TEN.replace('1\n', 'ONE\n').replace('8\n', 'eight\n'));
+      const before = await state(r);
+      await expect(push(r, 'staged')).rejects.toMatchObject({ kind: 'Conflict', message: "Can't stash the staged changes alone: m.txt has unstaged edits on or next to the same lines. Stash its unstaged changes first, or stage them. Nothing was stashed" });
+      expect([await state(r), stashList(r.wt)]).toEqual([before, []]);
+    });
+
+    it('takes a staged line out of, and back into, its own lines when its context also matches nearer', async () => {
+      const t = await makeTestRepo();
+      const filler = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, k) => `${from + k}\n`).join('');
+      const head = `p\ny\nq\n${filler(4, 20)}p\nx\nq\n${filler(24, 30)}`;
+      const thirty = Array.from({ length: 30 }, (_, k) => `added ${k}\n`).join('');
+      const staged = head.replace('p\nx\nq\n', 'p\ny\nq\n');
+      await t.write('a.txt', head);
+      await t.commit('Base');
+      await t.write('a.txt', staged);
+      await t.stage('a.txt');
+      await t.write('a.txt', staged.replace('q\n', `q\n${thirty}`));
+      const r = { t, ctx: fakeCtx(t.repo), wt: mainWt(t.repo) };
+      const before = await state(r as unknown as T);
+      await push(r as unknown as T, 'staged', ['a.txt']);
+      expect(t.memfs.readFileSync(`${t.dir}/a.txt`, 'utf8')).toBe(head.replace('q\n', `q\n${thirty}`));
+      await h.stashApply({ repo: 1, worktree: t.dir, oid: stashList(r.wt)[0].oid, pop: true }, r.ctx);
+      expect(await state(r as unknown as T)).toEqual(before);
+    });
   });
 });

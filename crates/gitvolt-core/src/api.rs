@@ -842,7 +842,8 @@ pub enum Request {
     /// The toolbar Stash, the WIP header's and the WIP row menu's:
     /// `WriteResult<StashPushOutcome>`. `message`: the whole WIP draft ("" for the default).
     /// `paths`: a WIP file's or folder's Stash, of those only (a staged rename's both sides),
-    /// named from them when `message` is "".
+    /// named from them when `message` is "". `part`: only their staged or unstaged changes, the
+    /// list's the Stash was started from (with `paths` only).
     StashPush {
         repo: u32,
         worktree: String,
@@ -850,6 +851,9 @@ pub enum Request {
         #[serde(default)]
         #[ts(optional)]
         paths: Option<Vec<String>>,
+        #[serde(default)]
+        #[ts(optional)]
+        part: Option<crate::write::stash::StashPart>,
     },
     /// Apply, or Pop: `WriteResult<StashApplyOutcome>`. `withoutIndex`: after "Apply
     /// without restoring what was staged?". A gone `oid` is `NotFound` "That stash is gone".
@@ -3384,7 +3388,7 @@ impl Api {
                 let confirm = crate::write::types::Confirm { autostash: confirm_autostash.unwrap_or(false) };
                 to_json(crate::write::run_write(self, repo, &worktree, expect, crate::write::checkout::Checkout::new(target, on_diverged, confirm)).await?)
             }
-            Request::StashPush { repo, worktree, message, paths } => to_json(crate::write::stash::stash_push(self, repo, &worktree, message, paths).await?),
+            Request::StashPush { repo, worktree, message, paths, part } => to_json(crate::write::stash::stash_push(self, repo, &worktree, message, paths, part).await?),
             Request::StashApply { repo, worktree, oid, pop, without_index } => to_json(crate::write::stash::stash_apply(self, repo, &worktree, oid, pop, without_index.unwrap_or(false)).await?),
             Request::StashDrop { repo, worktree, oid } => to_json(crate::write::stash::stash_drop(self, repo, &worktree, oid).await?),
             // --- reset ---

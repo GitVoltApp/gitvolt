@@ -97,6 +97,9 @@ pub struct StashMove {
     /// A push of some paths only (`stash push -- <paths>`): its redo stashes them again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paths: Option<Vec<String>>,
+    /// Only their staged or unstaged part (a WIP list's Stash): its redo takes that part again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub part: Option<crate::write::stash::StashPart>,
 }
 
 /// Why a stash is kept.

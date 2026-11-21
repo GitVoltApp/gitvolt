@@ -38,14 +38,14 @@ describe('stashes', () => {
     await stashPushFor(ctx);
     expect(push).toHaveBeenCalledWith(1, '/r', '');
   });
-  it('a stash of some paths sends them, and neither uses nor clears the draft', async () => {
+  it('a stash of some paths sends them and the part, and neither uses nor clears the draft', async () => {
     writeWipDraft('/r', '/r', { summary: 'The rest', description: '' });
     const push = vi.spyOn(api, 'stashPush').mockResolvedValue(res({ status: 'stashed', oid: 'abc' }) as never);
-    await stashPathsFor(ctx, ['src/a.ts']);
-    expect(push).toHaveBeenCalledWith(1, '/r', '', ['src/a.ts']);
+    await stashPathsFor(ctx, ['src/a.ts'], 'staged');
+    expect(push).toHaveBeenCalledWith(1, '/r', '', ['src/a.ts'], 'staged');
     expect(readWipDraft('/r', '/r').summary).toBe('The rest');
     push.mockResolvedValue(res({ status: 'nothingToStash' }) as never);
-    await stashPathsFor(ctx, ['src']);
+    await stashPathsFor(ctx, ['src'], 'unstaged');
     expect(useToast.getState().message).toBe('No changes to stash');
   });
   it('apply, pop and drop send the oid; conflicts say where they went', async () => {

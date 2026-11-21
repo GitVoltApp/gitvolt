@@ -9,6 +9,7 @@ import type { HistoryRow } from '../../../api/gen/HistoryRow';
 import type { JournalState } from '../../../api/gen/JournalState';
 import type { OpKind } from '../../../api/gen/OpKind';
 import type { PausedKind } from '../../../api/gen/PausedKind';
+import type { StashPart } from '../../../api/gen/StashPart';
 import { compareBytewise } from '../read/bytes';
 import type { ConfigChange } from './config';
 import { shortRef, type HeadState, type RefMove } from './refs';
@@ -29,6 +30,8 @@ export interface StashMove {
   withoutIndex: boolean;
   /** A push of some paths only: its redo stashes them again. */
   paths?: string[];
+  /** Only their staged or unstaged part: its redo takes that part again. */
+  part?: StashPart;
 }
 
 export type KeptReason =

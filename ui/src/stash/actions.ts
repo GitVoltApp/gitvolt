@@ -1,4 +1,5 @@
 import { api } from '../api/client';
+import type { StashPart } from '../api/gen/StashPart';
 import { useRuntime } from '../app/runtime';
 import { clearWipDraft, draftMessage, readWipDraft } from '../commit/draft';
 import { confirmAction } from '../ui/ConfirmDialog';
@@ -17,10 +18,11 @@ export async function stashPushFor(ctx: WriteCtx): Promise<void> {
   if (out?.status === 'stashed') clearWipDraft(repoPath, ctx.worktree);
 }
 
-/** A WIP file's or folder's Stash: those paths only (staged, unstaged and untracked changes),
+/** A WIP file's or folder's Stash: those paths only, the part of their changes in the list it was
+ * started from (Staged: the staged changes; Unstaged: the unstaged ones and untracked files),
  * named from them by the backend. The WIP draft is the rest's, so it's neither used nor cleared. */
-export async function stashPathsFor(ctx: WriteCtx, paths: string[]): Promise<void> {
-  const out = await runWrite(ctx, () => api.stashPush(ctx.repoId, ctx.worktree, '', paths));
+export async function stashPathsFor(ctx: WriteCtx, paths: string[], part: StashPart): Promise<void> {
+  const out = await runWrite(ctx, () => api.stashPush(ctx.repoId, ctx.worktree, '', paths, part));
   if (out?.status === 'nothingToStash') useToast.getState().show('No changes to stash');
 }
 

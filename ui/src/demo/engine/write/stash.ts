@@ -13,9 +13,10 @@ import { gitSubject, readCommit } from '../read/commitText';
 import type { IndexEntry, IndexStat } from '../read/indexFile';
 import { diffLines, splitLines, unifiedHunks, type DiffHunk } from '../read/lineDiff';
 import { fail } from '../read/seam';
-import { diffTrees, listFiles, MODE_GITLINK, readBlobBytes, type FileEntry, type TreeChange } from '../read/trees';
+import { diffTrees, listFiles, MODE_GITLINK, MODE_LINK, readBlobBytes, type FileEntry, type TreeChange } from '../read/trees';
 import { checkoutEntry, fileAt, kind, readFileState, removeWorktreePath, repoWithin, throughLink } from './files';
 import { keepStat, loadIndex, saveIndex, stage0Of, unmergedOf } from './index';
+import { conflictCount, mergeLines } from './mergeFile';
 import { applyMerge, mergeTrees } from './mergeTrees';
 import { worktreeProblems } from './mergeRun';
 import { hardReset, mixedReset, refusal } from './move';
@@ -130,8 +131,10 @@ function removeEmptyFolders(wt: WriteWt, indexed: Set<string>): void {
 const NO_INITIAL = 'You do not have the initial commit yet';
 
 /** `narrow`: a WIP file's or folder's Stash (the core's `narrow`): I and W hold the changes in
- *  `paths` only, not the whole index git records; an autostash's keeps git's. */
-export async function pushStash(wt: WriteWt, ident: string, message: string, o: { untracked: Untracked; paths: string[] | null; narrow?: boolean }): Promise<StashEntry | null> {
+ *  `paths` only, not the whole index git records; an autostash's keeps git's. `keepStaged`: an
+ *  Unstaged part's (the core's `keep_staged`): the scope's staged changes go back after the reset,
+ *  staged and in the files. */
+export async function pushStash(wt: WriteWt, ident: string, message: string, o: { untracked: Untracked; paths: string[] | null; narrow?: boolean; keepStaged?: boolean }): Promise<StashEntry | null> {
   const head = readHead(wt);
   if (head.oid === null) throw gitFailure(NO_INITIAL, `${NO_INITIAL}\n`);
   const entries = await loadIndex(wt);
@@ -217,7 +220,123 @@ export async function pushStash(wt: WriteWt, ident: string, message: string, o: 
       }
     }
     await saveIndex(wt, (await loadIndex(wt)).map((e) => (stats.has(e.path) && e.stage === 0 ? { ...e, stat: stats.get(e.path)! } : e)));
+    if (o.keepStaged) await checkoutStaged(wt, [...new Set([...headFiles.keys(), ...index.keys()])].filter((p) => scope(p) && !sameEntry(headFiles.get(p) ?? null, index.get(p) ?? null)), index);
   }
+  return { oid, subject };
+}
+
+const sameEntry = (a: FileEntry | null, b: FileEntry | null) => (a === null ? b === null : b !== null && a.oid === b.oid && a.mode === b.mode);
+
+/** `git checkout --no-overlay <index part> -- <paths>`: each path's entry of `from`, in the index
+ *  and the file (none: both go). */
+async function checkoutStaged(wt: WriteWt, paths: string[], from: Map<string, FileEntry>): Promise<void> {
+  if (paths.length === 0) return;
+  const current = stage0Of(await loadIndex(wt));
+  const next = (await loadIndex(wt)).filter((e) => !paths.includes(e.path));
+  for (const p of paths) {
+    const e = from.get(p);
+    if (!e) {
+      removeWorktreePath(wt, p);
+      continue;
+    }
+    const st = await checkoutEntry(wt, p, e);
+    const entry = keepStat(current, { path: p, mode: e.mode, oid: e.oid, stage: 0 });
+    next.push(st ? { ...entry, stat: st } : entry);
+  }
+  await saveIndex(wt, next);
+}
+
+/** Why one file's part can't be taken out of it, or put into it, alone (the core's `Clash`). */
+type Clash = 'lines' | 'binary' | 'link' | 'kind' | 'submodule' | 'whole';
+
+function pick<T>(eq: (a: T, b: T) => boolean, ours: T, base: T, theirs: T): { v: T } | null {
+  if (eq(ours, base)) return { v: theirs };
+  if (eq(theirs, base) || eq(ours, theirs)) return { v: ours };
+  return null;
+}
+
+/** The core's `merged`: the 3-way merge of one file's entries, `ours` with what changed from
+ *  `base` to `theirs` (the exec bit too); contents by a line merge, never a relocated hunk. */
+async function mergeEntry(wt: WriteWt, ours: FileEntry | null, base: FileEntry | null, theirs: FileEntry | null): Promise<{ entry: FileEntry | null } | { clash: Clash }> {
+  const whole = pick(sameEntry, ours, base, theirs);
+  if (whole) return { entry: whole.v };
+  if (!ours || !base || !theirs) return { clash: 'whole' };
+  const kind = (m: number) => (m === MODE_GITLINK ? 2 : m === MODE_LINK ? 1 : 0);
+  if ([ours, base, theirs].some((e) => kind(e.mode) === 2)) return { clash: 'submodule' };
+  if (kind(ours.mode) !== kind(base.mode) || kind(theirs.mode) !== kind(base.mode)) return { clash: 'kind' };
+  const mode = pick((a, b) => a === b, ours.mode, base.mode, theirs.mode)!.v;
+  const oid = pick((a, b) => a === b, ours.oid, base.oid, theirs.oid);
+  if (oid) return { entry: { mode, oid: oid.v } };
+  if (kind(base.mode) === 1) return { clash: 'link' };
+  const [o, b, t] = [await readBlobBytes(wt.repo, ours.oid), await readBlobBytes(wt.repo, base.oid), await readBlobBytes(wt.repo, theirs.oid)];
+  if ([o, b, t].some(isBinaryHead)) return { clash: 'binary' };
+  const chunks = mergeLines(splitLines(latin1(b)), splitLines(latin1(o)), splitLines(latin1(t)), 'merge');
+  if (conflictCount(chunks) > 0) return { clash: 'lines' };
+  const text = chunks.flatMap((c) => (c.kind === 'common' ? c.lines : [])).join('');
+  return { entry: { mode, oid: await writeBlobBytes(wt.repo, latin1Bytes(text)) } };
+}
+
+/** The core's `refusal`: why a Staged part's file refuses. */
+async function partRefusal(wt: WriteWt, path: string, staged: boolean, inHead: boolean, clash: Clash): Promise<GbError> {
+  if (clash === 'submodule') return gbError('Conflict', `Can't stash the staged changes alone: ${path} is a submodule. Nothing was stashed`);
+  let why: string;
+  if (clash === 'lines') why = `${path} has unstaged edits on or next to the same lines`;
+  else if (clash === 'binary') why = `${path} is a binary file with unstaged edits`;
+  else if (clash === 'link') why = `${path} is a symbolic link with an unstaged change`;
+  else if (clash === 'kind') why = `${path} has an unstaged change between a file and a symbolic link`;
+  else if (!staged) why = `${path} is staged as deleted, but there's a file there again`;
+  else if (!inHead) {
+    const renamed = (await statusEntries(wt.repo, wt.root)).some((e) => e.path === path && e.origPath !== null);
+    why = `${path} is ${renamed ? 'renamed' : 'a new file'} with unstaged edits, which would have no file to stay in`;
+  } else why = `${path} is deleted, unstaged`;
+  return gbError('Conflict', `Can't stash the staged changes alone: ${why}. Stash its unstaged changes first, or stage them. Nothing was stashed`);
+}
+
+/** A file as an entry (its blob written), or null when there's none. */
+async function fileEntry(wt: WriteWt, p: string): Promise<FileEntry | null> {
+  const f = fileAt(wt, p);
+  return f === null ? null : { mode: f.mode, oid: await writeBlobBytes(wt.repo, f.bytes) };
+}
+
+/** A Staged part (the core's `push_staged`): the scope's staged changes as the stash's index and
+ *  worktree parts, on HEAD; each file is merged from its staged version to HEAD's, keeping its
+ *  unstaged edits, and unstaged. Every file is merged first: a clash refuses, nothing stashed. */
+export async function pushStaged(wt: WriteWt, ident: string, message: string, paths: string[]): Promise<StashEntry | null> {
+  const head = readHead(wt);
+  if (head.oid === null) throw gbError('InvalidInput', NO_INITIAL);
+  const entries = await loadIndex(wt);
+  if (unmergedOf(entries).size > 0) throw gbError('InvalidInput', 'Resolve the conflicted files first');
+  const scope = inScope(paths);
+  const index = stage0Of(entries.filter((e) => !e.intentToAdd));
+  const headFiles = await listFiles(wt.repo, head.oid);
+  const staged = [...new Set([...headFiles.keys(), ...index.keys()])].filter((p) => scope(p) && !sameEntry(headFiles.get(p) ?? null, index.get(p) ?? null)).sort(compareBytewise);
+  if (staged.length === 0) return null;
+  // Each file without its staged part: merged from the staged version to HEAD's.
+  const left = new Map<string, FileEntry | null>();
+  for (const p of staged) {
+    const [h, s, u] = [headFiles.get(p) ?? null, index.get(p) ?? null, await fileEntry(wt, p)];
+    const out = await mergeEntry(wt, u, s, h);
+    if ('clash' in out) throw await partRefusal(wt, p, s !== null, h !== null, out.clash);
+    left.set(p, out.entry);
+  }
+  const files = new Map(headFiles);
+  for (const p of staged) {
+    const e = index.get(p);
+    if (e) files.set(p, { mode: e.mode, oid: e.oid });
+    else files.delete(p);
+  }
+  const tree = await writeTreeOf(wt.repo, [...files].map(([path, e]) => ({ path, mode: e.mode, oid: e.oid })));
+  const branch = head.branch ?? '(no branch)';
+  const on = `${branch}: ${head.oid.slice(0, 7)} ${gitSubject((await readCommit(wt.repo, head.oid)).rawMessage)}`;
+  const i = await writeCommitObject(wt.repo, { tree, parents: [head.oid], author: ident, committer: ident, message: `index on ${on}\n` });
+  const oid = await writeCommitObject(wt.repo, { tree, parents: [head.oid, i], author: ident, committer: ident, message: `On ${branch}: ${message}` });
+  const subject = reflogMessage(`On ${branch}: ${message.split('\n')[0].replace(/\r$/, '').trim()}`);
+  storeStash(wt, ident, oid, subject);
+  for (const [p, e] of left) {
+    if (e === null) removeWorktreePath(wt, p);
+    else await checkoutEntry(wt, p, e);
+  }
+  await mixedReset(wt, head.oid, staged);
   return { oid, subject };
 }
 
@@ -315,8 +434,23 @@ export async function applyStash(wt: WriteWt, oid: string, withIndex: boolean): 
   const head = readHead(wt).oid!;
   const headTree = (await readCommit(wt.repo, head)).tree;
   const ours = await writeIndexTree(wt.repo, entries);
-  // 2. The index part (`--index`, when the stash has one) must apply to the index as it is.
-  const indexPart = withIndex && i !== undefined && (await readCommit(wt.repo, i)).tree !== (await readCommit(wt.repo, b)).tree;
+  // 2. The index part (`--index`, when the stash has one) must apply to the index as it is. The
+  //    core's `route`: one staged already is no change (the merge then based on it); a staged
+  //    part only, onto files edited since, is its patch to the index and the files.
+  const iTree = i === undefined ? null : (await readCommit(wt.repo, i)).tree;
+  let indexPart = withIndex && i !== undefined && iTree !== (await readCommit(wt.repo, b)).tree;
+  let base = b;
+  if (indexPart) {
+    const part = await diffTrees(wt.repo, b, i);
+    const now = stage0Of(entries);
+    const holds = (p: string, e: FileEntry | null) => sameEntry(now.get(p) ?? null, e);
+    if (part.every((c) => holds(c.path, c.new))) {
+      [base, indexPart] = [i, false];
+    } else if (iTree === w.tree && u === undefined && part.every((c) => holds(c.path, c.old))) {
+      const edited = new Set((await statusEntries(wt.repo, wt.root)).filter((s) => s.kind !== 'untracked' && s.worktree !== '.').map((s) => s.path));
+      if (part.some((c) => edited.has(c.path))) return applyPatch(wt, entries, part);
+    }
+  }
   const patched = indexPart ? await indexPatch(wt, entries.filter((e) => !e.intentToAdd), b, i) : null;
   if (indexPart && patched === null) return { kind: 'indexRefused' };
   // 3. The untracked files; one where something already is stays out. A file or link standing
@@ -355,7 +489,7 @@ export async function applyStash(wt: WriteWt, oid: string, withIndex: boolean): 
   } else staged = entries.filter((e) => e.intentToAdd).map((e) => e.path);
   if (staged.length > 0) return { kind: 'refused', error: gitFailure(OVERWRITTEN, `error: ${OVERWRITTEN}\n  ${staged.join(' ')}\n${unstashed}${notes}`), ...withUntracked };
   const attrs = new AttrReader(wt.repo, wt.root);
-  const m = await mergeTrees(wt.repo, b, ours, oid, { ours: 'Updated upstream', theirs: 'Stashed changes' }, (p) => markerSizeOf(attrs, p));
+  const m = await mergeTrees(wt.repo, base, ours, oid, { ours: 'Updated upstream', theirs: 'Stashed changes' }, (p) => markerSizeOf(attrs, p));
   const problems = worktreeProblems(wt, m, await statusEntries(wt.repo, wt.root));
   if (problems.size > 0) {
     const e = refusal('merge', problems, (p) => p);
@@ -368,14 +502,35 @@ export async function applyStash(wt: WriteWt, oid: string, withIndex: boolean): 
   let final: IndexEntry[];
   if (patched !== null) final = patched.map((e) => keepStat(merged, e));
   else {
-    const base = await listFiles(wt.repo, b);
+    const baseFiles = await listFiles(wt.repo, base);
     const before = stage0Of(entries);
     final = entries.map((e) => keepStat(merged, e));
-    for (const [p, e] of await listFiles(wt.repo, oid)) if (!base.has(p) && !before.has(p)) final.push(keepStat(merged, { path: p, mode: e.mode, oid: e.oid, stage: 0 }));
+    for (const [p, e] of await listFiles(wt.repo, oid)) if (!baseFiles.has(p) && !before.has(p)) final.push(keepStat(merged, { path: p, mode: e.mode, oid: e.oid, stage: 0 }));
   }
   await saveIndex(wt, final);
   // 6. An untracked file that was in the way.
   if (untracked !== null) return { kind: 'partial', error: untracked };
+  return { kind: 'applied' };
+}
+
+/** `Route::Merge`: the staged part onto the index as it is, and into each file by a 3-way merge,
+ *  every file merged first; nothing changes on a refusal. */
+async function applyPatch(wt: WriteWt, entries: IndexEntry[], part: TreeChange[]): Promise<StashApplied> {
+  const now = stage0Of(entries);
+  const files = new Map<string, FileEntry | null>();
+  let next = [...entries];
+  for (const c of part) {
+    const file = await mergeEntry(wt, await fileEntry(wt, c.path), c.old, c.new);
+    if ('clash' in file) return { kind: 'refused', error: gbError('Conflict', `The stash's staged changes don't go into ${c.path} as it is now: it has edits on or next to the same lines; nothing changed`) };
+    files.set(c.path, file.entry);
+    next = next.filter((x) => x.path !== c.path);
+    if (c.new) next.push(keepStat(now, { path: c.path, mode: c.new.mode, oid: c.new.oid, stage: 0 }));
+  }
+  for (const [p, e] of files) {
+    if (e === null) removeWorktreePath(wt, p);
+    else await checkoutEntry(wt, p, e);
+  }
+  await saveIndex(wt, next);
   return { kind: 'applied' };
 }
 
