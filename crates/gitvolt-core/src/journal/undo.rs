@@ -553,7 +553,7 @@ impl WriteIntent for UndoIntent {
                 }
                 (Direction::Redo, before, _) => {
                     match self.entry.stashes.first() {
-                        Some(m) if m.created => crate::write::stash::refuse_stash_push_in_the_way(pre, "redo").await?,
+                        Some(m) if m.created => crate::write::stash::refuse_stash_push_in_the_way(pre, "redo", m.paths.as_deref()).await?,
                         Some(m) if before.is_some() => crate::write::stash::refuse_stash_apply_in_the_way(pre, &m.oid, "redo").await?,
                         _ => {}
                     }

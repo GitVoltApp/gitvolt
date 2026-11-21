@@ -1,8 +1,12 @@
 //! Stashes. Identity is the stash commit's oid, never a list position:
 //! `stash@{n}` is found by oid in `git stash list` (a read) under the lock, just before each
 //! command, and checked again (`rev-parse`) so a stack that shifted is never acted on blindly.
-//! - Push: `git stash push --include-untracked -m <message>`; journaled (undo applies it with
-//!   `--index` and drops it; redo pushes again and records the new oid).
+//! - Push: `git stash push --include-untracked -m <message> [-- <paths>]`; journaled (undo
+//!   applies it with `--index` and drops it; redo pushes again and records the new oid). A push
+//!   of some paths takes a staged rename's both sides, and keeps only their changes (`narrow`).
+//!   Paths are git's bytes throughout (a name needn't be UTF-8).
+//! - An apply with `--index` while other files are staged runs on a temp index (`index_aside`):
+//!   git's own resets the whole index first, and refuses then, losing what was staged.
 //! - Apply: `git stash apply --index <oid>` (or without `--index` once confirmed); not journaled.
 //! - Pop: snapshot `before`, apply, and drop on a clean apply; journaled (undo restores
 //!   `before` and stores the stash back; redo pops again). A conflicting pop keeps the stash,
@@ -120,11 +124,16 @@ async fn names(cli: &GitCli, root: &Path, args: &[&str]) -> Result<Vec<String>, 
     Ok(out.stdout.split(|b| *b == 0).filter(|s| !s.is_empty()).map(|s| String::from_utf8_lossy(s).into_owned()).collect())
 }
 
-/// A whole-worktree `stash push -u` (the Stash button, the redo of one) is
-/// refused where HEAD's file would be written over a repository (`precheck::stash_push_in_the_way`).
-pub(crate) async fn refuse_stash_push_in_the_way(pre: &Pre<'_>, what: &str) -> Result<(), GbError> {
+/// A `stash push -u` (the Stash button, a file's Stash, the redo of one) is refused where
+/// HEAD's file would be written over a repository (`precheck::stash_push_in_the_way`).
+pub(crate) async fn refuse_stash_push_in_the_way(pre: &Pre<'_>, what: &str, paths: Option<&[String]>) -> Result<(), GbError> {
     let tracked = precheck::dirty(&pre.api.cli, pre.root).await?.tracked;
-    match Box::pin(precheck::stash_push_in_the_way(&pre.api.cli, pre.root, &tracked, None)).await?.first() {
+    // The check reads paths as text: a rename's other side whose name isn't UTF-8 isn't checked.
+    let scope = match paths {
+        Some(p) => Some(with_renames(&pre.api.cli, pre.root, p).await?.into_iter().filter_map(|p| String::from_utf8(p).ok()).collect::<Vec<_>>()),
+        None => None,
+    };
+    match Box::pin(precheck::stash_push_in_the_way(&pre.api.cli, pre.root, &tracked, scope.as_deref())).await?.first() {
         Some(p) => Err(precheck::repository_in_the_way(p, what)),
         None => Ok(()),
     }
@@ -164,35 +173,268 @@ pub enum StashPushOutcome {
 }
 
 pub(crate) struct StashPush {
-    /// The whole WIP draft, or `WIP on <branch>` (`(no branch)`) when it was empty.
+    /// The whole WIP draft, or `WIP on <branch>` (`(no branch)`) when it was empty; for some
+    /// paths, `WIP on <branch>: <path>` (`<path> and N more`).
     pub message: String,
+    /// Only these files and folders (a WIP file's or folder's Stash); `None`: every change.
+    pub paths: Option<Vec<String>>,
 }
 
 impl StashPush {
-    /// Fills the empty message from HEAD, read before the run.
-    pub(crate) fn new(message: String, branch: Option<&str>) -> Self {
-        let message = if message.trim().is_empty() { format!("WIP on {}", branch.unwrap_or("(no branch)")) } else { message };
-        Self { message }
+    /// Fills the empty message from HEAD, read before the run, and the paths.
+    pub(crate) fn new(message: String, branch: Option<&str>, paths: Option<Vec<String>>) -> Self {
+        let on = format!("WIP on {}", branch.unwrap_or("(no branch)"));
+        let message = match (&paths, message.trim().is_empty()) {
+            (_, false) => message,
+            (Some(p), true) if !p.is_empty() => match p.len() - 1 {
+                0 => format!("{on}: {}", p[0]),
+                n => format!("{on}: {} and {n} more", p[0]),
+            },
+            _ => on,
+        };
+        Self { message, paths }
     }
 }
 
-/// `git stash push --include-untracked -m <message>`: the new stash's `(oid, subject)`, or
-/// `None` when git found nothing to stash. The caller records it before `relist`.
-async fn push(cx: &mut WriteCx<'_>, message: &str) -> Result<Option<(String, String)>, GbError> {
-    let before = crate::journal::autostash::stash_oid(cx.api, cx.root).await?;
-    let inv = cx.git(["stash", "push", "--include-untracked", "-m", message]);
-    cx.run_git(inv).await?;
-    let after = crate::journal::autostash::stash_oid(cx.api, cx.root).await?;
-    if after == before {
-        return Ok(None);
+/// A path as git's bytes: a name needn't be UTF-8.
+type Bytes = Vec<u8>;
+
+/// `p` is `scope`'s path or under one of its folders.
+fn within(p: &[u8], scope: &[Bytes]) -> bool {
+    scope.iter().any(|s| p == s.as_slice() || p.strip_prefix(s.as_slice()).is_some_and(|rest| rest.first() == Some(&b'/')))
+}
+
+/// NUL-separated names from a read, as git's bytes.
+async fn raw_names(cli: &GitCli, root: &Path, args: &[&str]) -> Result<Vec<Bytes>, GbError> {
+    let out = cli.run(GitInvocation::new(root, args.iter().copied())).await?;
+    Ok(out.stdout.split(|b| *b == 0).filter(|s| !s.is_empty()).map(<[u8]>::to_vec).collect())
+}
+
+/// Paths for `--pathspec-from-file=- --pathspec-file-nul`.
+fn nul_bytes(paths: &[Bytes]) -> Vec<u8> {
+    paths.iter().flat_map(|p| p.iter().copied().chain([0])).collect()
+}
+
+/// A read's output, its last newline dropped.
+async fn read_text(cli: &GitCli, root: &Path, args: &[&str]) -> Result<String, GbError> {
+    Ok(String::from_utf8_lossy(&cli.run(GitInvocation::new(root, args.iter().copied())).await?.stdout).trim().to_string())
+}
+
+/// `paths` and the other side of each staged rename with a side in them: a stash of one side
+/// alone would leave half the rename staged (a deletion, or a copy).
+async fn with_renames(cli: &GitCli, root: &Path, paths: &[String]) -> Result<Vec<Bytes>, GbError> {
+    let asked: Vec<Bytes> = paths.iter().map(|p| p.as_bytes().to_vec()).collect();
+    let mut out = asked.clone();
+    // No HEAD: git refuses the stash, and there's no rename.
+    if cli.run(GitInvocation::new(root, ["rev-parse", "--verify", "-q", "HEAD"])).await.is_err() {
+        return Ok(out);
     }
+    let mut it = raw_names(cli, root, &["diff-index", "--cached", "-M", "--name-status", "-z", "HEAD"]).await?.into_iter();
+    while let Some(status) = it.next() {
+        let Some(a) = it.next() else { break };
+        if !status.starts_with(b"R") {
+            continue;
+        }
+        let Some(b) = it.next() else { break };
+        if within(&a, &asked) || within(&b, &asked) {
+            for p in [a, b] {
+                if !within(&p, &out) {
+                    out.push(p);
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// `git stash push --include-untracked -m <message> [-- <paths>]`: the new stash's `(oid,
+/// subject)`, or `None` when git found nothing to stash. The caller records it before `relist`.
+/// A stash git stored before it failed (its cleanup) is recorded here, and the error says so.
+async fn push(cx: &mut WriteCx<'_>, message: &str, paths: Option<&[String]>) -> Result<Option<(String, String)>, GbError> {
+    let scope = match paths {
+        Some([]) => return Err(no_paths()),
+        Some(p) => Some(with_renames(&cx.api.cli, cx.root, p).await?),
+        None => None,
+    };
+    // What's staged in scope, read just before git's push (its index commit has the whole index).
+    let staged: Vec<Change> = match &scope {
+        Some(scope) => changes(&cx.api.cli, cx.root, &["diff-index", "--cached", "-r", "-z", "--no-renames", "HEAD"]).await?.into_iter().filter(|(p, _)| within(p, scope)).collect(),
+        None => Vec::new(),
+    };
+    // git's `add -- <paths>` refuses a path neither the index nor the worktree has: a staged
+    // deletion goes back in the index first (an unstaged one then), and `narrow` stashes it staged.
+    let gone: Vec<Bytes> = staged.iter().filter(|(p, s)| s.is_none() && std::fs::symlink_metadata(cx.root.join(crate::platform::osstr::from_bytes(p))).is_err()).map(|(p, _)| p.clone()).collect();
+    if !gone.is_empty() {
+        let inv = cx.git(["reset", "-q", "--pathspec-from-file=-", "--pathspec-file-nul"]).env("GIT_LITERAL_PATHSPECS", "1").stdin(nul_bytes(&gone));
+        cx.run_git(inv).await?;
+    }
+    let before = crate::journal::autostash::stash_oid(cx.api, cx.root).await?;
+    let mut args = vec!["stash", "push", "--include-untracked", "-m", message];
+    if scope.is_some() {
+        args.extend(["--pathspec-from-file=-", "--pathspec-file-nul"]);
+    }
+    let mut inv = cx.git(args);
+    if let Some(scope) = &scope {
+        inv = inv.env("GIT_LITERAL_PATHSPECS", "1").stdin(nul_bytes(scope));
+    }
+    let ran = cx.run_git(inv).await;
+    let after = crate::journal::autostash::stash_oid(cx.api, cx.root).await;
+    let stored = match &after {
+        Ok(a) if *a != before => a.clone(),
+        _ => None,
+    };
+    let Some(oid) = stored else {
+        // Nothing stored: the deletions are staged again, as they were.
+        if !gone.is_empty() {
+            stage_deletions(cx, &gone).await?;
+        }
+        ran?;
+        after?;
+        return Ok(None);
+    };
     cx.partial = true;
     for k in [ChangeKind::Stash, ChangeKind::Worktree, ChangeKind::Index] {
         cx.touch(k);
     }
-    let oid = after.ok_or_else(|| GbError::other("the stash wasn't recorded"))?;
     let subject = subject_of(&cx.api.cli, cx.root, &oid).await?;
-    Ok(Some((oid, subject)))
+    if let Err(e) = ran {
+        // git stored the stash, then failed (cleaning the files up): it's recorded, so Undo can
+        // apply it, and the error says where the changes are.
+        cx.record_stash(StashMove { oid, message: subject.clone(), created: true, without_index: false, paths: paths.map(<[String]>::to_vec) })?;
+        let message = format!("git stored the stash \"{}\", then failed: {}. The changes are in the stash; some may still be in the files too", user_message(&subject), e.message);
+        return Err(GbError { message, ..e });
+    }
+    let Some(scope) = &scope else { return Ok(Some((oid, subject))) };
+    match narrow(cx, &oid, &subject, scope, &staged, &gone).await {
+        Ok(narrowed) => Ok(Some((narrowed, subject))),
+        Err(e) => {
+            tracing::warn!(target: "gitvolt_core::write", "the stash {oid} is kept as git made it, with the other staged changes: {e}");
+            Ok(Some((oid, subject)))
+        }
+    }
+}
+
+/// Stages `gone`'s deletions again, retrying a moment on another process's `index.lock`.
+async fn stage_deletions(cx: &mut WriteCx<'_>, gone: &[Bytes]) -> Result<(), GbError> {
+    for tries in 1.. {
+        let inv = cx.git_stash(["rm", "--cached", "-q", "--ignore-unmatch", "--pathspec-from-file=-", "--pathspec-file-nul"]).env("GIT_LITERAL_PATHSPECS", "1").stdin(nul_bytes(gone));
+        match cx.run_git(inv).await {
+            Ok(_) => return Ok(()),
+            Err(_) if tries < 5 => tokio::time::sleep(std::time::Duration::from_millis(100 * tries)).await,
+            Err(e) => {
+                let names: Vec<_> = gone.iter().map(|p| String::from_utf8_lossy(p)).collect();
+                return Err(GbError { message: format!("The deletion of {} is no longer staged; stage it again ({})", names.join(", "), e.message), ..e });
+            }
+        }
+    }
+    unreachable!()
+}
+
+fn no_paths() -> GbError {
+    GbError::new(GbErrorKind::InvalidInput, "No files to stash")
+}
+
+/// A change `changes` lists: the path, and its new `(mode, oid)` (`None`: deleted).
+type Change = (Bytes, Option<(String, String)>);
+
+/// Each file a raw diff (`diff-tree -r -z`, `diff-index -z`) lists as changed.
+async fn changes(cli: &GitCli, root: &Path, args: &[&str]) -> Result<Vec<Change>, GbError> {
+    let listed = raw_names(cli, root, args).await?;
+    // `:<old mode> <new mode> <old oid> <new oid> <status>`, then the path.
+    Ok(listed
+        .chunks(2)
+        .filter_map(|c| {
+            let [meta, path] = c else { return None };
+            let meta = String::from_utf8_lossy(meta);
+            let f: Vec<&str> = meta.trim_start_matches(':').split(' ').collect();
+            let (mode, oid, status) = (f.get(1)?, f.get(3)?, f.get(4)?);
+            Some((path.clone(), (!status.starts_with('D')).then(|| (mode.to_string(), oid.to_string()))))
+        })
+        .collect())
+}
+
+/// `base`'s tree with `changes` made, through a temp index.
+async fn tree_with(cx: &WriteCx<'_>, base: &str, changes: &[&Change]) -> Result<String, GbError> {
+    let dir = tempfile::Builder::new().prefix("stash-").tempdir_in(&cx.tmp)?;
+    let temp = dir.path().join("index");
+    let mut info = Vec::new();
+    for (p, s) in changes {
+        let meta = match s {
+            Some((mode, oid)) => format!("{mode} {oid}\t"),
+            None => format!("0 {}\t", "0".repeat(base.len())),
+        };
+        info.extend_from_slice(meta.as_bytes());
+        info.extend_from_slice(p);
+        info.push(0);
+    }
+    cx.api.cli.run(cx.git_stash(["read-tree", base]).env("GIT_INDEX_FILE", &temp)).await?;
+    cx.api.cli.run(cx.git_stash(["update-index", "--replace", "-z", "--index-info"]).env("GIT_INDEX_FILE", &temp).stdin(info)).await?;
+    let out = cx.api.cli.run(cx.git_stash(["write-tree"]).env("GIT_INDEX_FILE", &temp)).await?;
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// `git commit-tree` of `tree` with `of`'s message, author and committer: the identity and
+/// dates git chose for the stash (its fallback one too, when none is configured), kept.
+async fn commit_like(cx: &WriteCx<'_>, of: &str, tree: &str, parents: &[&str]) -> Result<String, GbError> {
+    let message = cx.api.cli.run(GitInvocation::new(cx.root, ["show", "-s", "--format=%B", of])).await?.stdout;
+    let mut who = cx.api.cli.run(GitInvocation::new(cx.root, ["show", "-s", "--date=raw", "--format=%an%x00%ae%x00%ad%x00%cn%x00%ce%x00%cd", of])).await?.stdout;
+    if who.last() == Some(&b'\n') {
+        who.pop();
+    }
+    let fields: Vec<&[u8]> = who.split(|b| *b == 0).collect();
+    let [an, ae, ad, cn, ce, cd] = fields.as_slice() else { return Err(GbError::other(format!("unreadable identity on {of}"))) };
+    let mut args = vec!["commit-tree", "--no-gpg-sign", tree, "-F", "-"];
+    for p in parents {
+        args.extend(["-p", p]);
+    }
+    let mut inv = cx.git_stash(args).stdin(message);
+    for (k, v) in [("GIT_AUTHOR_NAME", an), ("GIT_AUTHOR_EMAIL", ae), ("GIT_AUTHOR_DATE", ad), ("GIT_COMMITTER_NAME", cn), ("GIT_COMMITTER_EMAIL", ce), ("GIT_COMMITTER_DATE", cd)] {
+        inv = inv.env(k, crate::platform::osstr::from_vec(v.to_vec()));
+    }
+    let out = cx.api.cli.run(inv).await?;
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// git records the whole index in a stash of some paths, and W on top of it: the other staged
+/// files would be in the stash too. Unless it already holds just the scope's changes, the stash
+/// is made again from its base: I with `staged` (the scope's index just before the push, a
+/// staged deletion git saw unstaged too), W with the scope's changes, its untracked files'
+/// commit kept. It's checked against git's before it replaces it (stored on top, git's then
+/// dropped: both are listed between the two, never neither); any difference keeps git's.
+/// Returns the stash listed now.
+async fn narrow(cx: &mut WriteCx<'_>, oid: &str, subject: &str, scope: &[Bytes], staged: &[Change], gone: &[Bytes]) -> Result<String, GbError> {
+    let parents = read_text(&cx.api.cli, cx.root, &["show", "-s", "--format=%P", oid]).await?;
+    let parents: Vec<&str> = parents.split(' ').collect();
+    let [base, index, untracked @ ..] = parents.as_slice() else { return Ok(oid.to_string()) };
+    let diff = async |cx: &WriteCx<'_>, to: &str| changes(&cx.api.cli, cx.root, &["diff-tree", "-r", "-z", "--no-renames", base, to]).await;
+    let (w, i) = (diff(cx, oid).await?, diff(cx, index).await?);
+    if gone.is_empty() && w.iter().chain(&i).all(|(p, _)| within(p, scope)) {
+        return Ok(oid.to_string());
+    }
+    let w: Vec<&Change> = w.iter().filter(|(p, _)| within(p, scope)).collect();
+    // git's index part for the scope is what was staged, but for the deletions put back first.
+    let i: Vec<&Change> = i.iter().filter(|(p, _)| within(p, scope)).collect();
+    let expected: Vec<&Change> = staged.iter().filter(|(p, _)| !gone.contains(p)).collect();
+    if i != expected {
+        return Err(GbError::other("the index changed during the stash"));
+    }
+    let i_commit = commit_like(cx, index, &tree_with(cx, base, &staged.iter().collect::<Vec<_>>()).await?, &[base]).await?;
+    let w_parents: Vec<&str> = [*base, i_commit.as_str()].into_iter().chain(untracked.iter().copied()).collect();
+    let narrowed = commit_like(cx, oid, &tree_with(cx, base, &w).await?, &w_parents).await?;
+    // Checked before git's goes: W and I hold exactly the scope's changes (nothing else differs
+    // from the base), and the untracked files are git's.
+    let (w_now, i_now) = (diff(cx, &narrowed).await?, diff(cx, &i_commit).await?);
+    let parents_now = read_text(&cx.api.cli, cx.root, &["show", "-s", "--format=%P", &narrowed]).await?;
+    if w_now.iter().collect::<Vec<_>>() != w || i_now.as_slice() != staged || parents_now != w_parents.join(" ") {
+        return Err(GbError::other(format!("the narrowed stash {narrowed} doesn't hold what git's does")));
+    }
+    let inv = cx.git_stash(["stash", "store", "-m", subject, narrowed.as_str()]);
+    cx.run_git(inv).await?;
+    cx.touch(ChangeKind::Stash);
+    if let Err(e) = drop_at(cx, 1, oid, false).await {
+        tracing::warn!(target: "gitvolt_core::write", "git's own stash {oid} stays listed: {e}");
+    }
+    Ok(narrowed)
 }
 
 /// git folds a multi-line `-m` into one reflog line (`On main: Fix x the details`); the list
@@ -287,13 +529,16 @@ impl WriteIntent for StashPush {
     /// `stash push -u` ends in a `reset --hard` that writes HEAD's file over a directory in its
     /// place, deleting a repository in it whole: refused first.
     async fn plan(&self, pre: &Pre<'_>) -> Result<Plan, GbError> {
-        refuse_stash_push_in_the_way(pre, "stash").await?;
+        if self.paths.as_ref().is_some_and(Vec::is_empty) {
+            return Err(no_paths());
+        }
+        refuse_stash_push_in_the_way(pre, "stash", self.paths.as_deref()).await?;
         Ok(Plan::default())
     }
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<StashPushOutcome, GbError> {
-        let Some((oid, subject)) = push(cx, &self.message).await? else { return Ok(StashPushOutcome::NothingToStash) };
+        let Some((oid, subject)) = push(cx, &self.message, self.paths.as_deref()).await? else { return Ok(StashPushOutcome::NothingToStash) };
         // Written ahead of the relist's drop.
-        cx.record_stash(StashMove { oid: oid.clone(), message: subject.clone(), created: true, without_index: false })?;
+        cx.record_stash(StashMove { oid: oid.clone(), message: subject.clone(), created: true, without_index: false, paths: self.paths.clone() })?;
         let now = relist(cx, &oid, &subject, &self.message, &self.label()).await;
         if now != subject {
             cx.edit_entry(|e| {
@@ -315,21 +560,110 @@ pub enum StashApplyOutcome {
     Conflicts { files: u32 },
 }
 
+fn without_index() -> GbError {
+    GbError::new(GbErrorKind::Conflict, "git couldn't restore what was staged").with_detail(ErrorDetail::ApplyWithoutIndex)
+}
+
+/// git's `apply --index` resets the whole index to HEAD before its merge, which then refuses
+/// over any staged change ("Index was not unstashed"), the staged changes lost. When the stash
+/// has an index part and something is staged, the apply runs on a temp index instead, a copy of
+/// the real one reset to HEAD (its stat data kept), and only the stash's paths are taken back
+/// (`take_back`): the other files' staged state is never touched. A path of the stash that's
+/// staged now is git's refusal: the question to apply without the index, nothing changed.
+struct Aside {
+    _dir: tempfile::TempDir,
+    index: std::path::PathBuf,
+    /// The stash's tracked paths: its index and worktree changes.
+    paths: Vec<Bytes>,
+}
+
+async fn index_aside(cx: &WriteCx<'_>, oid: &str) -> Result<Option<Aside>, GbError> {
+    let (cli, root) = (&cx.api.cli, cx.root);
+    let tree = |c: &str| format!("{oid}{c}^{{tree}}");
+    if read_text(cli, root, &["rev-parse", &tree("^1")]).await? == read_text(cli, root, &["rev-parse", &tree("^2")]).await? {
+        return Ok(None);
+    }
+    let staged = raw_names(cli, root, &["diff-index", "--cached", "--name-only", "--no-renames", "-z", "HEAD"]).await?;
+    if staged.is_empty() {
+        return Ok(None);
+    }
+    let (base, index) = (format!("{oid}^1"), format!("{oid}^2"));
+    let mut paths = raw_names(cli, root, &["diff-tree", "-r", "--name-only", "--no-renames", "-z", &base, oid]).await?;
+    paths.extend(raw_names(cli, root, &["diff-tree", "-r", "--name-only", "--no-renames", "-z", &base, &index]).await?);
+    paths.sort();
+    paths.dedup();
+    if paths.iter().any(|p| staged.contains(p)) {
+        return Err(without_index());
+    }
+    let dir = tempfile::Builder::new().prefix("stash-apply-").tempdir_in(&cx.tmp)?;
+    let index = dir.path().join("index");
+    let real = gix::open(root).map_err(gix_err)?.index_path();
+    if real.is_file() {
+        std::fs::copy(&real, &index)?;
+    }
+    cli.run(cx.git_stash(["reset", "-q"]).env("GIT_INDEX_FILE", &index)).await?;
+    Ok(Some(Aside { _dir: dir, index, paths }))
+}
+
+/// The stash's paths as the apply left them in the temp index (conflict stages too), written
+/// to the real one; nothing else in it changes.
+async fn take_back(cx: &WriteCx<'_>, aside: &Aside, zero: &str) -> Result<(), GbError> {
+    let listed = cx.api.cli.run(GitInvocation::new(cx.root, ["ls-files", "-s", "-z"]).env("GIT_INDEX_FILE", &aside.index)).await?.stdout;
+    let mut info = Vec::new();
+    for p in &aside.paths {
+        info.extend_from_slice(format!("0 {zero}\t").as_bytes());
+        info.extend_from_slice(p);
+        info.push(0);
+    }
+    // `<mode> <oid> <stage>\t<path>`, as `--index-info` takes it.
+    for rec in listed.split(|b| *b == 0) {
+        if let Some(tab) = rec.iter().position(|b| *b == b'\t')
+            && aside.paths.iter().any(|p| p.as_slice() == &rec[tab + 1..])
+        {
+            info.extend_from_slice(rec);
+            info.push(0);
+        }
+    }
+    cx.api.cli.run(cx.git_stash(["update-index", "-z", "--index-info"]).stdin(info)).await?;
+    Ok(())
+}
+
 /// `git stash apply [--index] <oid>`; `Ok(None)` on a clean apply, `Ok(Some(files))` with
 /// content conflicts; git refusing the index is `ApplyWithoutIndex` (nothing changed).
 async fn apply(cx: &mut WriteCx<'_>, oid: &str, with_index: bool) -> Result<Option<u32>, GbError> {
     // git prints a merge's CONFLICT lines on stdout, which a failure doesn't keep: conflicts are
     // the unmerged paths the apply added.
     let unmerged_before = precheck::dirty(&cx.api.cli, cx.root).await?.conflicted;
+    // With conflicts already, git refuses the apply: as it is.
+    let aside = if with_index && unmerged_before == 0 { index_aside(cx, oid).await? } else { None };
     let mut args = vec!["stash", "apply"];
     if with_index {
         args.push("--index");
     }
     args.push(oid);
-    let inv = cx.git(args);
+    let mut inv = cx.git(args);
+    if let Some(a) = &aside {
+        inv = inv.env("GIT_INDEX_FILE", &a.index);
+    }
     let res = cx.run_git(inv).await;
     cx.touch(ChangeKind::Worktree);
     cx.touch(ChangeKind::Index);
+    let refused = |e: &GbError| {
+        let stderr = e.stderr.as_deref().unwrap_or_default();
+        stderr.contains("Conflicts in index") || stderr.contains("without --index")
+    };
+    if let Some(a) = &aside {
+        // Taken back after a merge git ran: clean, or with conflicts (unmerged in the temp index).
+        let merged = match &res {
+            Ok(_) => true,
+            Err(e) if refused(e) => false,
+            Err(_) => cx.api.cli.run(GitInvocation::new(cx.root, ["ls-files", "-u", "-z"]).env("GIT_INDEX_FILE", &a.index)).await.is_ok_and(|o| !o.stdout.is_empty()),
+        };
+        if merged {
+            cx.partial = true;
+            take_back(cx, a, &"0".repeat(oid.len())).await?;
+        }
+    }
     let e = match res {
         Ok(_) => {
             cx.partial = true;
@@ -337,9 +671,8 @@ async fn apply(cx: &mut WriteCx<'_>, oid: &str, with_index: bool) -> Result<Opti
         }
         Err(e) => e,
     };
-    let stderr = e.stderr.as_deref().unwrap_or_default();
-    if with_index && (stderr.contains("Conflicts in index") || stderr.contains("without --index")) {
-        return Err(GbError::new(GbErrorKind::Conflict, "git couldn't restore what was staged").with_detail(ErrorDetail::ApplyWithoutIndex));
+    if with_index && refused(&e) {
+        return Err(without_index());
     }
     // From here the apply may have written some of it.
     cx.partial = true;
@@ -383,7 +716,7 @@ impl WriteIntent for StashApply {
             None => {
                 if self.pop {
                     // Written ahead of the drop.
-                    cx.record_stash(StashMove { oid: self.oid.clone(), message: self.subject.clone(), created: false, without_index: self.without_index })?;
+                    cx.record_stash(StashMove { oid: self.oid.clone(), message: self.subject.clone(), created: false, without_index: self.without_index, paths: None })?;
                     if let Err(e) = drop_oid(cx, &self.oid).await {
                         unrecord_if_listed(cx, &self.oid).await;
                         return Err(e);
@@ -432,7 +765,7 @@ impl WriteIntent for StashDrop {
     }
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<(), GbError> {
         // Written ahead of the drop: a crash between them leaves a banner.
-        cx.record_stash(StashMove { oid: self.oid.clone(), message: self.subject.clone(), created: false, without_index: false })?;
+        cx.record_stash(StashMove { oid: self.oid.clone(), message: self.subject.clone(), created: false, without_index: false, paths: None })?;
         if let Err(e) = drop_oid(cx, &self.oid).await {
             if unrecord_if_listed(cx, &self.oid).await {
                 // Nothing changed: no entry.
@@ -474,6 +807,8 @@ fn edit(cx: &mut WriteCx<'_>, id: u64, f: impl FnOnce(&mut JournalEntry)) -> Res
 pub(crate) async fn undo_stash(cx: &mut WriteCx<'_>, entry: &JournalEntry, undo: bool, label: &str, without_index: bool) -> Result<(), GbError> {
     let moved = entry.stashes.first().cloned();
     match (moved, &entry.before) {
+        // The stash itself is applied (a push of some paths too: what it holds, whatever
+        // changed while it was made), with `--index` around any other staged files (`apply`).
         (Some(m), _) if m.created => {
             if undo {
                 subject_of(&cx.api.cli, cx.root, &m.oid).await?;
@@ -486,9 +821,9 @@ pub(crate) async fn undo_stash(cx: &mut WriteCx<'_>, entry: &JournalEntry, undo:
                 // is still there (dangling); the reflog subject is only its first line.
                 let full = cx.api.cli.run(GitInvocation::new(cx.root, ["show", "-s", "--format=%B", m.oid.as_str()])).await.map(|o| String::from_utf8_lossy(&o.stdout).trim_end().to_string()).unwrap_or_else(|_| m.message.clone());
                 let message = user_message(&full).to_string();
-                let Some((oid, subject)) = push(cx, &message).await? else { return Err(GbError::new(GbErrorKind::InvalidInput, "Nothing to stash")) };
+                let Some((oid, subject)) = push(cx, &message, m.paths.as_deref()).await? else { return Err(GbError::new(GbErrorKind::InvalidInput, "Nothing to stash")) };
                 // Written ahead of the relist's drop.
-                let new = |subject: String| StashMove { oid: oid.clone(), message: subject, created: true, without_index: false };
+                let new = |subject: String| StashMove { oid: oid.clone(), message: subject, created: true, without_index: false, paths: m.paths.clone() };
                 edit(cx, entry.id, |e| {
                     if let Some(s) = e.stashes.first_mut() {
                         *s = new(subject.clone());
@@ -568,12 +903,12 @@ async fn request_subject(api: &Api, repo: u32, worktree: &str, oid: &str) -> Res
     subject_of(&api.cli, &root, oid).await
 }
 
-/// `stashPush`: an empty `message` names HEAD's branch, read first.
-pub(crate) async fn stash_push(api: &Api, repo: u32, worktree: &str, message: String) -> Result<WriteResult<StashPushOutcome>, GbError> {
+/// `stashPush`: an empty `message` names HEAD's branch, read first (and the paths, if any).
+pub(crate) async fn stash_push(api: &Api, repo: u32, worktree: &str, message: String, paths: Option<Vec<String>>) -> Result<WriteResult<StashPushOutcome>, GbError> {
     let h = api.handle(repo)?;
     let root = api.worktree_dir(&h, worktree).await?;
     let branch = blocking(move || crate::write::head_state(&gix::open(&root).map_err(gix_err)?)).await?.branch;
-    run_write(api, repo, worktree, Default::default(), StashPush::new(message, branch.as_deref())).await
+    run_write(api, repo, worktree, Default::default(), StashPush::new(message, branch.as_deref(), paths)).await
 }
 
 /// `stashApply` (Apply, or Pop).
@@ -680,6 +1015,273 @@ mod tests {
         r.git(&["switch", "-q", "--detach", "HEAD"]);
         send(&env.api, json!({"method": "stashPush", "params": {"repo": id, "worktree": wt(&r), "message": ""}})).await.unwrap();
         assert!(r.git(&["stash", "list", "-1", "--format=%gs"]).ends_with(": WIP on (no branch)"));
+    }
+
+    // --- some paths only ---
+
+    /// `dirty`, and: e staged (another file's staged change), d/x unstaged, d/y untracked.
+    fn dirtier(r: &TestRepo) {
+        r.write("d/x.txt", "x\n");
+        r.write("e.txt", "e\n");
+        r.git(&["add", "."]);
+        r.git(&["commit", "-q", "-m", "two"]);
+        dirty(r);
+        r.write("e.txt", "e staged\n");
+        r.git(&["add", "e.txt"]);
+        r.write("d/x.txt", "x unstaged\n");
+        r.write("d/y.txt", "y untracked\n");
+    }
+
+    async fn stash_some(api: &crate::api::Api, id: u32, r: &TestRepo, paths: &[&str]) -> serde_json::Value {
+        send(api, json!({"method": "stashPush", "params": {"repo": id, "worktree": wt(r), "message": "", "paths": paths}})).await.unwrap()
+    }
+
+    /// The files the newest stash holds: its worktree side's and its untracked files'.
+    fn stashed(r: &TestRepo) -> Vec<String> {
+        let mut out: Vec<String> = r.git(&["diff", "--name-only", "--no-renames", "stash@{0}^1", "stash@{0}"]).lines().map(String::from).collect();
+        if let Ok(u) = r.try_git(&["ls-tree", "-r", "--name-only", "stash@{0}^3"]) {
+            out.extend(u.lines().map(String::from));
+        }
+        out.sort();
+        out
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_stash_of_some_files_leaves_the_others_and_their_staged_state() {
+        let env = WriteEnv::new();
+        let r = repo();
+        dirtier(&r);
+        let id = open(&env.api, &r).await;
+        let status = || r.git(&["status", "--porcelain", "-uall"]);
+        let before = RepoState::capture(&r);
+        // A staged file (its unstaged edit too), an unstaged one, an untracked one, a folder.
+        for (paths, gone, left, name) in [
+            (vec!["a.txt"], vec!["a.txt"], " M b.txt\n M d/x.txt\nM  e.txt\n?? c.txt\n?? d/y.txt", "WIP on main: a.txt"),
+            (vec!["b.txt"], vec!["b.txt"], "M  a.txt\n M d/x.txt\nM  e.txt\n?? c.txt\n?? d/y.txt", "WIP on main: b.txt"),
+            (vec!["c.txt"], vec!["c.txt"], "M  a.txt\n M b.txt\n M d/x.txt\nM  e.txt\n?? d/y.txt", "WIP on main: c.txt"),
+            (vec!["d"], vec!["d/x.txt", "d/y.txt"], "M  a.txt\n M b.txt\nM  e.txt\n?? c.txt", "WIP on main: d"),
+            (vec!["a.txt", "c.txt"], vec!["a.txt", "c.txt"], " M b.txt\n M d/x.txt\nM  e.txt\n?? d/y.txt", "WIP on main: a.txt and 1 more"),
+        ] {
+            let out = stash_some(&env.api, id, &r, &paths).await;
+            assert_eq!(out["outcome"]["status"], "stashed", "{paths:?}");
+            assert_eq!(out["outcome"]["oid"].as_str(), Some(top(&r).as_str()));
+            assert_eq!(status(), left, "{paths:?}: the others untouched, staged ones still staged");
+            assert_eq!(stashed(&r), gone, "{paths:?}: the stash holds those only");
+            assert_eq!(r.git(&["stash", "list", "--format=%gs"]), format!("On main: {name}"));
+            assert_eq!(journal(&env.api, id, &r).await["undo"]["label"], format!("stash \"{name}\""));
+            undo_redo(&env.api, id, &r, &before, |after| {
+                assert_eq!(after.stashes.lines().count(), 1, "re-pushed");
+                assert_eq!(stashed(&r), gone, "{paths:?}: redo stashes those only");
+            })
+            .await;
+            let s = journal(&env.api, id, &r).await;
+            send(&env.api, json!({"method": "undo", "params": {"repo": id, "worktree": wt(&r), "entry": s["undo"]["entry"]}})).await.unwrap();
+            assert_eq!(RepoState::capture(&r), before, "{paths:?}: undo applies it back, staged as it was");
+        }
+    }
+
+    /// A staged rename's other side goes with it, whichever side is asked: never half a rename.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_stash_of_a_renamed_file_takes_both_sides() {
+        let env = WriteEnv::new();
+        let r = repo();
+        r.git(&["mv", "a.txt", "moved.txt"]);
+        r.write("b.txt", "b unstaged\n");
+        let id = open(&env.api, &r).await;
+        let before = RepoState::capture(&r);
+        assert_eq!(r.git(&["status", "--porcelain"]), " M b.txt\nR  a.txt -> moved.txt");
+        stash_some(&env.api, id, &r, &["moved.txt"]).await;
+        assert_eq!(r.git(&["status", "--porcelain"]), " M b.txt", "a.txt is back, moved.txt gone");
+        assert_eq!(stashed(&r), ["a.txt", "moved.txt"]);
+        assert_eq!(r.git(&["stash", "list", "--format=%gs"]), "On main: WIP on main: moved.txt");
+        undo_redo(&env.api, id, &r, &before, |_| {}).await;
+        assert_eq!(r.git(&["status", "--porcelain"]), " M b.txt");
+        r.git(&["stash", "pop", "-q", "--index"]);
+        assert_eq!(RepoState::capture(&r).index, before.index);
+        stash_some(&env.api, id, &r, &["a.txt"]).await;
+        assert_eq!(r.git(&["status", "--porcelain"]), " M b.txt", "from the old side too");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_stash_of_unchanged_files_is_nothing_to_stash() {
+        let env = WriteEnv::new();
+        let r = repo();
+        r.write("b.txt", "b unstaged\n");
+        let id = open(&env.api, &r).await;
+        let held = RepoState::capture(&r);
+        for paths in [vec!["a.txt"], vec!["gone.txt"]] {
+            let out = stash_some(&env.api, id, &r, &paths).await;
+            assert_eq!(out["outcome"], json!({"status": "nothingToStash"}), "{paths:?}");
+        }
+        assert!(journal(&env.api, id, &r).await["undo"].is_null());
+        let e = send(&env.api, json!({"method": "stashPush", "params": {"repo": id, "worktree": wt(&r), "message": "", "paths": []}})).await.unwrap_err();
+        assert_eq!(serde_json::to_value(&e).unwrap()["kind"], "InvalidInput", "an empty list never stashes everything");
+        assert_eq!(RepoState::capture(&r), held);
+    }
+
+    /// A staged deletion whose file is gone (`git rm`) is stashed staged, and comes back so.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_stash_of_a_staged_deletion_keeps_it_staged() {
+        let env = WriteEnv::new();
+        let r = repo();
+        r.git(&["rm", "-q", "a.txt"]);
+        r.write("b.txt", "b unstaged\n");
+        let id = open(&env.api, &r).await;
+        let before = RepoState::capture(&r);
+        assert_eq!(stash_some(&env.api, id, &r, &["a.txt"]).await["outcome"]["status"], "stashed");
+        assert_eq!(r.git(&["status", "--porcelain"]), " M b.txt");
+        assert_eq!(r.git(&["diff", "--name-status", "stash@{0}^1", "stash@{0}^2"]), "D\ta.txt", "staged in the stash");
+        undo_redo(&env.api, id, &r, &before, |_| {}).await;
+        assert_eq!(r.git(&["status", "--porcelain"]), " M b.txt");
+    }
+
+    /// Pop and Apply never change the staged state of the files outside the stash: git's own
+    /// `apply --index` resets the whole index and then refuses over a staged change.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_pop_keeps_the_other_files_staged() {
+        let env = WriteEnv::new();
+        let pop = async |r: &TestRepo, id: u32| send(&env.api, json!({"method": "stashApply", "params": {"repo": id, "worktree": wt(r), "oid": top(r), "pop": true}})).await;
+        // Some paths, the other file staged all along.
+        let r = repo();
+        dirty(&r);
+        r.git(&["add", "b.txt"]);
+        r.write("a.txt", "a staged and more\n");
+        let id = open(&env.api, &r).await;
+        let held = RepoState::capture(&r);
+        stash_some(&env.api, id, &r, &["a.txt"]).await;
+        assert_eq!(r.git(&["status", "--porcelain"]), "M  b.txt\n?? c.txt");
+        pop(&r, id).await.unwrap();
+        assert_eq!(RepoState::capture(&r), held, "a's staged part staged again, b still staged");
+        // A whole stash with a staged part, another file staged since.
+        let r = repo();
+        dirty(&r);
+        r.git(&["stash", "push", "-q", "--include-untracked"]);
+        r.write("e.txt", "e staged since\n");
+        r.git(&["add", "e.txt"]);
+        let id = open(&env.api, &r).await;
+        pop(&r, id).await.unwrap();
+        assert_eq!(r.git(&["status", "--porcelain"]), "M  a.txt\n M b.txt\nA  e.txt\n?? c.txt");
+        assert!(r.git(&["stash", "list"]).is_empty());
+        // A path of the stash that's staged now: git's refusal, the question, nothing changed.
+        let r = repo();
+        dirty(&r);
+        r.git(&["stash", "push", "-q", "--include-untracked"]);
+        r.write("a.txt", "a staged since\n");
+        r.git(&["add", "a.txt"]);
+        let id = open(&env.api, &r).await;
+        let held = RepoState::capture(&r);
+        let e = pop(&r, id).await.unwrap_err();
+        assert_eq!(serde_json::to_value(&e).unwrap()["detail"], json!({"kind": "applyWithoutIndex"}));
+        assert_eq!(RepoState::capture(&r), held);
+    }
+
+    /// Undo applies the stash itself: a `before` that's older than what was stashed (an editor's
+    /// autosave in between) is never restored over it.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn undoing_a_stash_of_some_paths_applies_what_it_holds() {
+        let env = WriteEnv::new();
+        let r = repo();
+        r.write("a.txt", "older\n");
+        let older = r.git(&["stash", "create"]);
+        r.write("a.txt", "autosaved\n");
+        r.write("b.txt", "b staged\n");
+        r.git(&["add", "b.txt"]);
+        let id = open(&env.api, &r).await;
+        stash_some(&env.api, id, &r, &["a.txt"]).await;
+        let root = std::fs::canonicalize(r.path()).unwrap();
+        let stale = crate::journal::Snapshot { commit: older, paths: vec!["a.txt".into()], untracked: vec![], modes: Default::default() };
+        env.api.journal(&root).unwrap().update(|j| j.undo.last_mut().unwrap().before = Some(stale)).unwrap();
+        let s = journal(&env.api, id, &r).await;
+        send(&env.api, json!({"method": "undo", "params": {"repo": id, "worktree": wt(&r), "entry": s["undo"]["entry"]}})).await.unwrap();
+        assert_eq!(std::fs::read_to_string(r.path().join("a.txt")).unwrap(), "autosaved\n");
+        assert_eq!(r.git(&["status", "--porcelain"]), " M a.txt\nM  b.txt");
+    }
+
+    /// Narrowed with no identity configured: the stash keeps the one git chose for it.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_stash_of_some_paths_narrows_without_an_identity() {
+        use crate::git::GitCli;
+        use std::sync::Arc;
+        const IDENT: [&str; 5] = ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "EMAIL"];
+        let env: Vec<_> = crate::testing::isolated_git_env().into_iter().filter(|(k, _)| !IDENT.iter().any(|i| k == i)).collect();
+        // Nobody named, but what a command is given itself.
+        let cli = GitCli::new(Arc::new(crate::log::CommandLog::new(100))).with_env(env).with_command_hook(Arc::new(|cmd: &mut std::process::Command| {
+            let given: Vec<String> = cmd.get_envs().filter(|(_, v)| v.is_some()).map(|(k, _)| k.to_string_lossy().into_owned()).collect();
+            for var in IDENT.into_iter().filter(|v| !given.iter().any(|g| g == v)) {
+                cmd.env_remove(var);
+            }
+        }));
+        let data = tempfile::tempdir().unwrap();
+        let api = crate::api::Api::new(cli, None).with_data_dir(data.path().to_path_buf());
+        let r = TestRepo::new();
+        r.write("a.txt", "a\n");
+        r.write("b.txt", "b\n");
+        r.git(&["add", "."]);
+        r.git(&["commit", "-q", "-m", "one"]);
+        r.write("a.txt", "a edited\n");
+        r.write("b.txt", "b staged\n");
+        r.git(&["add", "b.txt"]);
+        let id = open(&api, &r).await;
+        stash_some(&api, id, &r, &["a.txt"]).await;
+        assert_eq!(stashed(&r), ["a.txt"], "narrowed");
+        assert_eq!(r.git(&["show", "-s", "--format=%an <%ae>", "stash@{0}"]), "git stash <git@stash>");
+    }
+
+    /// A name that isn't UTF-8 is stashed as itself: the narrowed stash never holds a made-up one.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_stash_of_a_folder_keeps_names_that_arent_utf8() {
+        use std::os::unix::ffi::OsStrExt;
+        let name = std::path::Path::new(std::ffi::OsStr::from_bytes(b"d/caf\xe9.txt"));
+        let env = WriteEnv::new();
+        let r = repo();
+        r.write("d/x.txt", "x\n");
+        std::fs::write(r.path().join(name), "base\n").unwrap();
+        r.git(&["add", "."]);
+        r.git(&["commit", "-q", "-m", "two"]);
+        std::fs::write(r.path().join(name), "edited\n").unwrap();
+        r.write("b.txt", "b staged\n");
+        r.git(&["add", "b.txt"]);
+        let id = open(&env.api, &r).await;
+        stash_some(&env.api, id, &r, &["d"]).await;
+        assert_eq!(std::fs::read(r.path().join(name)).unwrap(), b"base\n");
+        assert_eq!(r.git(&["status", "--porcelain"]), "M  b.txt");
+        r.git(&["stash", "pop", "-q"]);
+        assert_eq!(std::fs::read(r.path().join(name)).unwrap(), b"edited\n");
+        assert_eq!(std::fs::read_dir(r.path().join("d")).unwrap().count(), 2, "no other name made up");
+    }
+
+    /// git stores the stash, then fails cleaning the file up (a clean filter that fails once a
+    /// stash is stored: the cleanup's `add`): the stash is recorded (Undo applies it) and the
+    /// error says where the changes are.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_stash_git_stored_before_failing_is_recorded() {
+        let env = WriteEnv::new();
+        let r = repo();
+        let stored = r.path().join(".git/logs/refs/stash");
+        r.git(&["config", "filter.flaky.clean", &format!("[ -e {} ] && exit 1; cat", stored.display())]);
+        r.git(&["config", "filter.flaky.required", "true"]);
+        std::fs::write(r.path().join(".git/info/attributes"), "a.txt filter=flaky\n").unwrap();
+        r.write("a.txt", "a edited\n");
+        let id = open(&env.api, &r).await;
+        let e = send(&env.api, json!({"method": "stashPush", "params": {"repo": id, "worktree": wt(&r), "message": "", "paths": ["a.txt"]}})).await.unwrap_err();
+        assert!(e.message.starts_with("git stored the stash \"WIP on main: a.txt\", then failed"), "{}", e.message);
+        assert_eq!(r.git(&["stash", "list", "--format=%gs"]), "On main: WIP on main: a.txt");
+        assert_eq!(journal(&env.api, id, &r).await["undo"]["label"], "stash \"WIP on main: a.txt\"");
+    }
+
+    /// A path with glob characters is taken literally.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_stash_of_some_paths_takes_them_literally() {
+        let env = WriteEnv::new();
+        let r = repo();
+        r.write("[ab].txt", "glob\n");
+        r.write("b.txt", "b unstaged\n");
+        let id = open(&env.api, &r).await;
+        stash_some(&env.api, id, &r, &["[ab].txt"]).await;
+        assert_eq!(stashed(&r), ["[ab].txt"]);
+        assert_eq!(r.git(&["status", "--porcelain"]), " M b.txt");
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -902,7 +1504,7 @@ mod tests {
                     let id = j.begin(NewEntry { label: label.into(), kind: crate::events::OpKind::Stash, head_before: HeadState::default(), undo: UndoKind::Stash }, now);
                     let e = j.entry_mut(id).unwrap();
                     e.owner = Some(dead.clone());
-                    e.stashes.push(StashMove { oid, message: format!("On main: {}", &label[label.find('"').unwrap() + 1..label.len() - 1]), created, without_index: false });
+                    e.stashes.push(StashMove { oid, message: format!("On main: {}", &label[label.find('"').unwrap() + 1..label.len() - 1]), created, without_index: false, paths: None });
                 }
             })
             .unwrap();
@@ -1015,7 +1617,7 @@ mod tests {
         let id = j.begin(NewEntry { label: "pop stash \"x\"".into(), kind: crate::events::OpKind::Stash, head_before: HeadState::default(), undo: UndoKind::Stash }, 1);
         let e = j.entry_mut(id).unwrap();
         e.before = Some(Snapshot { commit: "c0ffee".into(), paths: vec!["a.txt".into()], untracked: Vec::new(), ..Default::default() });
-        e.stashes.push(StashMove { oid: "1a2b".into(), message: "On main: x".into(), created: false, without_index: false });
+        e.stashes.push(StashMove { oid: "1a2b".into(), message: "On main: x".into(), created: false, without_index: false, paths: None });
         j.recover_unless(|_| false);
         j.resolve_stash_moves(&[], |_| true);
         assert_eq!(j.kept.len(), 1);

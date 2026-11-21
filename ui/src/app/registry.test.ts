@@ -70,7 +70,7 @@ describe('the action registry', () => {
     const map = Object.fromEntries(bound().map(({ k, a }) => [`${k} ${a.id}`, true]));
     const want = [
       'Ctrl+Shift+S stage.file', 'Ctrl+Shift+S stage.unstageFile', 'Ctrl+Shift+D stage.hunk', 'Ctrl+Enter commit.commit',
-      'Ctrl+L repo.fetch', 'Ctrl+Shift+L sync.pull', 'Ctrl+Shift+K sync.push', 'Ctrl+Shift+N branch.create', 'Ctrl+Alt+S stash.push', 'Ctrl+Alt+P stash.pop',
+      'Ctrl+L repo.fetch', 'Ctrl+Shift+L sync.pull', 'Ctrl+Shift+K sync.push', 'Ctrl+Shift+N branch.create', 'Ctrl+Alt+S stash.push', 'Ctrl+Alt+P stash.pop', 'Ctrl+Alt+Shift+S stash.file',
       'Ctrl+Shift+1 diff.mode.hunk', 'Ctrl+Shift+2 diff.mode.inline', 'Ctrl+Shift+3 diff.mode.split', 'Ctrl+Shift+V diff.toggleRendered',
       'F8 diff.nextFile', 'Shift+F8 diff.prevFile', 'Ctrl+Shift+H history.file', 'Ctrl+Shift+B history.blame',
       'Alt+1 view.focusSidebar', 'Alt+2 view.focusGraph', 'Alt+3 view.focusFiles', 'Alt+4 view.focusDiff',

@@ -3,7 +3,7 @@ import type { AppEvent } from '../../api/gen/AppEvent';
 import { fakeCtx, makeTestRepo } from '../engine/read/testkit';
 import { runWrite } from '../engine/write/run';
 import { mainWt } from '../engine/write/seam';
-import { stashList } from '../engine/write/stash';
+import { stashList, stashPaths } from '../engine/write/stash';
 import { statusEntries } from '../engine/write/status';
 import { stashHandlers as h, undoStash } from './stash';
 import { NO_EXPECT } from './stage';
@@ -197,6 +197,51 @@ describe('undoStash', () => {
     expect([await status(t), stashList(wt)]).toEqual([['M. a.txt', '?? u.txt'], []]);
     await undoWrite(ctx, t.dir, e.id, false);
     expect([await status(t), stashList(wt).length, e.stashes[0].oid]).toEqual([[], 1, stashList(wt)[0].oid]);
+  });
+
+  it('stashes some paths only, the other staged files kept staged; undo applies it back, redo stashes them again', async () => {
+    const { t, ctx, wt } = await repo();
+    await t.write('b.txt', 'b\n');
+    await t.stage('b.txt');
+    const r = await h.stashPush({ repo: 1, worktree: t.dir, message: '', paths: ['a.txt'] }, ctx);
+    const e = ctx.writes.journal(t.dir).undoTop()!;
+    expect([r.outcome.status, r.journal.undo?.label, stashList(wt)[0].subject, await status(t)]).toEqual(['stashed', 'stash "WIP on main: a.txt"', 'On main: WIP on main: a.txt', ['A. b.txt', '?? u.txt']]);
+    expect([await stashPaths(wt, stashList(wt)[0].oid), e.stashes[0].paths, e.before]).toEqual([['a.txt'], ['a.txt'], null]);
+    await undoWrite(ctx, t.dir, e.id, true);
+    expect([await status(t), stashList(wt)]).toEqual([['M. a.txt', 'A. b.txt', '?? u.txt'], []]);
+    await undoWrite(ctx, t.dir, e.id, false);
+    expect([await status(t), await stashPaths(wt, stashList(wt)[0].oid), e.stashes[0].oid]).toEqual([['A. b.txt', '?? u.txt'], ['a.txt'], stashList(wt)[0].oid]);
+    const two = await h.stashPush({ repo: 1, worktree: t.dir, message: '', paths: ['b.txt', 'u.txt'] }, ctx);
+    expect([two.journal.undo?.label, await status(t)]).toEqual(['stash "WIP on main: b.txt and 1 more"', []]);
+  });
+
+  it('pops with the other files staged without touching them, and asks when a path of the stash is staged', async () => {
+    const { t, ctx, wt } = await repo();
+    await t.write('b.txt', 'b\n');
+    await t.stage('b.txt');
+    await h.stashPush({ repo: 1, worktree: t.dir, message: '', paths: ['a.txt'] }, ctx);
+    const p = await h.stashApply({ repo: 1, worktree: t.dir, oid: stashList(wt)[0].oid, pop: true }, ctx);
+    expect([p.outcome, await status(t), stashList(wt)]).toEqual([{ status: 'applied' }, ['M. a.txt', 'A. b.txt', '?? u.txt'], []]);
+    await h.stashPush({ repo: 1, worktree: t.dir, message: '', paths: ['a.txt'] }, ctx);
+    await t.write('a.txt', 'staged since\n');
+    await t.stage('a.txt');
+    await expect(h.stashApply({ repo: 1, worktree: t.dir, oid: stashList(wt)[0].oid, pop: true }, ctx)).rejects.toMatchObject({ detail: { kind: 'applyWithoutIndex' } });
+    expect(await status(t)).toEqual(['M. a.txt', 'A. b.txt', '?? u.txt']);
+  });
+
+  it('takes a staged rename whole, and has nothing to stash for unchanged paths', async () => {
+    const { t, ctx, wt } = await repo();
+    await t.commit('Both');
+    await t.write('moved.txt', '1\n2\n3\nA\n');
+    await t.remove('a.txt');
+    await t.stage('a.txt');
+    await t.stage('moved.txt');
+    await t.write('w.txt', 'w\n');
+    expect(await status(t)).toEqual(['R. moved.txt', '?? w.txt']);
+    await h.stashPush({ repo: 1, worktree: t.dir, message: '', paths: ['moved.txt'] }, ctx);
+    expect([await status(t), await stashPaths(wt, stashList(wt)[0].oid)]).toEqual([['?? w.txt'], ['a.txt', 'moved.txt']]);
+    const none = await h.stashPush({ repo: 1, worktree: t.dir, message: '', paths: ['a.txt'] }, ctx);
+    expect([none.outcome, ctx.writes.journal(t.dir).undo.length]).toEqual([{ status: 'nothingToStash' }, 1]);
   });
 
   it('undoes a pop by storing the stash back and restoring the files, and a drop by storing it back', async () => {

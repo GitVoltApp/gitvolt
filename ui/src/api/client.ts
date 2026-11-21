@@ -411,8 +411,10 @@ export const api = {
   /** `Delete | Local | Remote | Both |`. */
   deleteBranch: (repo: number, worktree: string, d: { branch: string; local: boolean; remote: RemoteBranchRef | null; force: boolean; expect: Expect }) =>
     call<WriteResult<DeleteOutcome>>({ method: 'deleteBranch', params: { repo, worktree, ...d } }),
-  /** Stash: `message` is the WIP draft, '' for the branch-based name. */
-  stashPush: (repo: number, worktree: string, message: string) => call<WriteResult<StashPushOutcome>>({ method: 'stashPush', params: { repo, worktree, message } }),
+  /** Stash: `message` is the WIP draft, '' for the branch-based name. `paths`: those files and
+   * folders only (a WIP file's or folder's Stash), named from them. */
+  stashPush: (repo: number, worktree: string, message: string, paths?: string[]) =>
+    call<WriteResult<StashPushOutcome>>({ method: 'stashPush', params: { repo, worktree, message, ...(paths && { paths }) } }),
   stashApply: (repo: number, worktree: string, oid: string, pop: boolean, withoutIndex: boolean) =>
     call<WriteResult<StashApplyOutcome>>({ method: 'stashApply', params: { repo, worktree, oid, pop, withoutIndex } }),
   stashDrop: (repo: number, worktree: string, oid: string) => call<WriteResult<null>>({ method: 'stashDrop', params: { repo, worktree, oid } }),

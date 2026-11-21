@@ -213,13 +213,13 @@ describe('pushStash as git 2.53', () => {
 });
 
 describe('applyStash as git 2.53', () => {
-  it('with an index part, refuses a staged change elsewhere (the index reset to HEAD); without one, applies over it', async () => {
+  it('with an index part, applies around a staged change elsewhere (the core\'s temp index), keeping it staged; without one, applies over it', async () => {
     const { t, wt } = await repo();
     const s = (await pushStash(wt, ident, 's', { untracked: 'none', paths: null }))!;
     await t.write('c.txt', 'c2\n');
     await t.stage('c.txt');
-    expect(await applyStash(wt, s.oid, true)).toMatchObject({ kind: 'refused', error: { kind: 'DirtyWorktree', stderr: 'error: Your local changes to the following files would be overwritten by merge:\n  c.txt\nIndex was not unstashed.\n' } });
-    expect(await status(t)).toEqual(['.M c.txt', '?? u.txt']);
+    expect(await applyStash(wt, s.oid, true)).toEqual({ kind: 'applied' });
+    expect(await status(t)).toEqual(['M. a.txt', '.M b.txt', 'M. c.txt', 'A. n.txt', '?? u.txt']);
     const { t: t2, wt: wt2 } = await repo();
     await t2.write('a.txt', '1\n2\n3\n4\n5\n6\n');
     await t2.stage('a.txt');

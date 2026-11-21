@@ -5,6 +5,15 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Added
+
+- **Stash just some files.** Right-click a file or folder in Unstaged or Staged (or press
+  Ctrl+Alt+Shift+S on the open file) to stash only its changes; the other files stay as they are.
+
+### Fixed
+
+- **Pop and Apply keep other staged files staged.** git's own unstaged them, then refused.
+
 ## [1.7.0] - 2026-11-20
 
 ### Changed

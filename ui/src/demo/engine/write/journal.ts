@@ -27,6 +27,8 @@ export interface StashMove {
   /** True: the op created it; false: it dropped it. */
   created: boolean;
   withoutIndex: boolean;
+  /** A push of some paths only: its redo stashes them again. */
+  paths?: string[];
 }
 
 export type KeptReason =

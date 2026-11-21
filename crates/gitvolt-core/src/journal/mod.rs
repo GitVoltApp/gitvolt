@@ -94,6 +94,9 @@ pub struct StashMove {
     /// redo applies without it too.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub without_index: bool,
+    /// A push of some paths only (`stash push -- <paths>`): its redo stashes them again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paths: Option<Vec<String>>,
 }
 
 /// Why a stash is kept.

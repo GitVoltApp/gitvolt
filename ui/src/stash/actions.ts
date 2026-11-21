@@ -17,6 +17,13 @@ export async function stashPushFor(ctx: WriteCtx): Promise<void> {
   if (out?.status === 'stashed') clearWipDraft(repoPath, ctx.worktree);
 }
 
+/** A WIP file's or folder's Stash: those paths only (staged, unstaged and untracked changes),
+ * named from them by the backend. The WIP draft is the rest's, so it's neither used nor cleared. */
+export async function stashPathsFor(ctx: WriteCtx, paths: string[]): Promise<void> {
+  const out = await runWrite(ctx, () => api.stashPush(ctx.repoId, ctx.worktree, '', paths));
+  if (out?.status === 'nothingToStash') useToast.getState().show('No changes to stash');
+}
+
 /** Apply or Pop, by the stash's oid. "Apply without restoring what was staged?" is
  * runWrite's question; a refused answer resends with `withoutIndex`. */
 export async function applyStash(ctx: WriteCtx, oid: string, pop: boolean): Promise<void> {

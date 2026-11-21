@@ -129,7 +129,9 @@ function removeEmptyFolders(wt: WriteWt, indexed: Set<string>): void {
 
 const NO_INITIAL = 'You do not have the initial commit yet';
 
-export async function pushStash(wt: WriteWt, ident: string, message: string, o: { untracked: Untracked; paths: string[] | null }): Promise<StashEntry | null> {
+/** `narrow`: a WIP file's or folder's Stash (the core's `narrow`): I and W hold the changes in
+ *  `paths` only, not the whole index git records; an autostash's keeps git's. */
+export async function pushStash(wt: WriteWt, ident: string, message: string, o: { untracked: Untracked; paths: string[] | null; narrow?: boolean }): Promise<StashEntry | null> {
   const head = readHead(wt);
   if (head.oid === null) throw gitFailure(NO_INITIAL, `${NO_INITIAL}\n`);
   const entries = await loadIndex(wt);
@@ -166,7 +168,19 @@ export async function pushStash(wt: WriteWt, ident: string, message: string, o: 
   const c = await readCommit(wt.repo, head.oid);
   const branch = head.branch ?? '(no branch)';
   const on = `${branch}: ${head.oid.slice(0, 7)} ${gitSubject(c.rawMessage)}`;
-  const i = await writeCommitObject(wt.repo, { tree: await writeIndexTree(wt.repo, entries), parents: [head.oid], author: ident, committer: ident, message: `index on ${on}\n` });
+  // Narrowed: HEAD's files with the scope's entries of the index (I) or of W.
+  const narrowed = async (from: Map<string, FileEntry>) => {
+    const files = new Map(headFiles);
+    for (const p of new Set([...headFiles.keys(), ...from.keys()])) {
+      if (!scope(p)) continue;
+      const e = from.get(p);
+      if (e) files.set(p, e);
+      else files.delete(p);
+    }
+    return writeTreeOf(wt.repo, [...files].map(([path, e]) => ({ path, mode: e.mode, oid: e.oid })));
+  };
+  const iTree = o.narrow ? await narrowed(index) : await writeIndexTree(wt.repo, entries);
+  const i = await writeCommitObject(wt.repo, { tree: iTree, parents: [head.oid], author: ident, committer: ident, message: `index on ${on}\n` });
   const parents = [head.oid, i];
   // git 2.53 writes the untracked files' commit whenever -u or -a is given, with none in it too.
   if (o.untracked !== 'none') {
@@ -178,7 +192,7 @@ export async function pushStash(wt: WriteWt, ident: string, message: string, o: 
     parents.push(await writeCommitObject(wt.repo, { tree: await writeTreeOf(wt.repo, files), parents: [], author: ident, committer: ident, message: `untracked files on ${on}\n` }));
   }
   const full = message === '' ? `WIP on ${on}` : `On ${branch}: ${message}`;
-  const oid = await writeCommitObject(wt.repo, { tree: await writeTreeOf(wt.repo, w.values()), parents, author: ident, committer: ident, message: full });
+  const oid = await writeCommitObject(wt.repo, { tree: o.narrow ? await narrowed(w) : await writeTreeOf(wt.repo, w.values()), parents, author: ident, committer: ident, message: full });
   // A multi-line message lists by its first line (the core's relist: a drop and a store again).
   const first = message.split('\n')[0].replace(/\r$/, '').trim();
   const subject = reflogMessage(message.trimEnd().includes('\n') ? `On ${branch}: ${first}` : full);
@@ -325,12 +339,19 @@ export async function applyStash(wt: WriteWt, oid: string, withIndex: boolean): 
   // The core's words: git's first line, its kind from the whole stderr.
   const untracked = lines.length === 0 ? null : gitFailure(lines[0].replace(/^fatal: /, ''), notes);
   const withUntracked = untracked === null ? {} : { untracked };
-  // 4. git's merge wants the index to hold ours (the index's own tree). With an index part git has
-  // reset the index to HEAD by then, so a staged change refuses; an intent-to-add entry always does.
+  // 4. git's merge wants the index to hold ours (the index's own tree). With an index part git
+  // resets the index to HEAD first, so a staged change would refuse: the core's `index_aside` runs
+  // it on a temp index then, the other files' staged state untouched, and a path of the stash
+  // that's staged now refuses the index. An intent-to-add entry always refuses.
   let staged: string[];
   if (indexPart) {
-    await mixedReset(wt, head);
-    staged = (await diffTrees(wt.repo, headTree, ours)).map((c) => c.path).sort(compareBytewise);
+    const changed = (await diffTrees(wt.repo, headTree, ours)).map((c) => c.path);
+    if (changed.length === 0) await mixedReset(wt, head);
+    else {
+      const own = new Set([...(await diffTrees(wt.repo, b, i!)), ...(await diffTrees(wt.repo, b, oid))].map((c) => c.path));
+      if (changed.some((p) => own.has(p))) return { kind: 'indexRefused' };
+    }
+    staged = [];
   } else staged = entries.filter((e) => e.intentToAdd).map((e) => e.path);
   if (staged.length > 0) return { kind: 'refused', error: gitFailure(OVERWRITTEN, `error: ${OVERWRITTEN}\n  ${staged.join(' ')}\n${unstashed}${notes}`), ...withUntracked };
   const attrs = new AttrReader(wt.repo, wt.root);
