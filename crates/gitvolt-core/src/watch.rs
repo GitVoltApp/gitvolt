@@ -1893,27 +1893,62 @@ mod tests {
         assert_eq!(main_added(&call(&api, graph).await), 2, "the watcher refreshed the cache");
     }
 
-    /// A commit made with the git CLI moves the branch HEAD names, not HEAD itself, and rewrites the
-    /// index with the same entries: the worktree's status is read again all the same, so the WIP
-    /// row and its staged list don't keep showing what was just committed.
+    /// What the UI shows of the main worktree's WIP: the graph's WIP row and both file lists,
+    /// without the lists' cache version.
+    async fn wip_view(api: &Api, id: u32, wt: &str) -> serde_json::Value {
+        let graph = call(api, serde_json::json!({"method": "graph", "params": {"repo": id, "limit": null}})).await;
+        let row = graph["rows"].as_array().unwrap().iter().find_map(|r| r["wip"].as_object().filter(|w| w["worktreeName"].is_null()).cloned());
+        let list = |staged: bool| call(api, serde_json::json!({"method": "fileList", "params": {"repo": id, "spec": {"kind": "wip", "worktree": wt, "staged": staged}}}));
+        let (mut staged, mut unstaged) = (list(true).await, list(false).await);
+        for l in [&mut staged, &mut unstaged] {
+            l.as_object_mut().unwrap().remove("version");
+        }
+        serde_json::json!({"row": row, "staged": staged, "unstaged": unstaged})
+    }
+
+    /// Whatever a git command run outside GitVolt changes, the watched repo's WIP ends up as an
+    /// unwatched one reads it fresh. Each command here changes what status says while leaving
+    /// some of the watcher's triggers alone: a commit or `reset --soft` moves only the branch
+    /// HEAD names (and rewrites the index with the same entries), `update-ref` only the branch.
     #[tokio::test(flavor = "multi_thread")]
-    async fn a_commit_made_with_the_cli_rereads_status() {
+    async fn git_commands_run_outside_leave_the_wip_as_a_fresh_read_has_it() {
         let r = TestRepo::new();
         fixtures::basic(&r);
-        let (api, id, mut rx) = watched(&r).await;
-        let graph = serde_json::json!({"method": "graph", "params": {"repo": id, "limit": null}});
-        r.write("staged.txt", "x\n");
-        r.git(&["add", "staged.txt"]);
-        while main_added(&call(&api, graph.clone()).await) != 1 {
-            next_change(&mut rx, Duration::from_secs(5)).await.expect("the add is seen");
-        }
-        r.git(&["commit", "-q", "-m", "from the cli"]);
-        let (kinds, _) = next_change(&mut rx, Duration::from_secs(5)).await.expect("the commit is seen");
-        assert!(kinds.contains(&ChangeKind::Refs), "{kinds:?}");
-        assert_eq!(main_added(&call(&api, graph).await), 0, "the WIP row no longer counts the committed file");
+        let (watched_api, id, _rx) = watched(&r).await;
+        let fresh_api = api();
+        let fresh = call(&fresh_api, serde_json::json!({"method": "openRepo", "params": {"path": r.path()}})).await["id"].as_u64().unwrap() as u32;
         let wt = canonical(r.path());
-        let staged = call(&api, serde_json::json!({"method": "fileList", "params": {"repo": id, "spec": {"kind": "wip", "worktree": wt, "staged": true}}})).await;
-        assert_eq!(staged["files"].as_array().map(Vec::len), Some(0), "{staged}");
+        let branch = r.git(&["symbolic-ref", "HEAD"]).trim().to_string();
+        let steps: [(&str, &dyn Fn()); 9] = [
+            ("add", &|| {
+                r.write("staged.txt", "x\n");
+                r.git(&["add", "staged.txt"]);
+            }),
+            ("commit", &|| drop(r.git(&["commit", "-q", "-m", "from the cli"]))),
+            ("reset --soft", &|| drop(r.git(&["reset", "-q", "--soft", "HEAD~1"]))),
+            ("commit again", &|| drop(r.git(&["commit", "-q", "-m", "again"]))),
+            ("update-ref", &|| drop(r.git(&["update-ref", &branch, "HEAD~1"]))),
+            ("reset", &|| drop(r.git(&["reset", "-q"]))),
+            ("commit -a", &|| drop(r.git(&["commit", "-q", "-a", "-m", "all"]))),
+            ("stash -u", &|| drop(r.git(&["stash", "push", "-q", "-u"]))),
+            ("stash pop", &|| drop(r.git(&["stash", "pop", "-q"]))),
+        ];
+        let mut before = wip_view(&fresh_api, fresh, &wt).await;
+        for (name, step) in steps {
+            step();
+            let want = wip_view(&fresh_api, fresh, &wt).await;
+            assert_ne!(want, before, "{name}: the step changes what status says");
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                let got = wip_view(&watched_api, id, &wt).await;
+                if got == want {
+                    break;
+                }
+                assert!(Instant::now() < deadline, "{name}: the watched WIP is stale\n got {got}\nwant {want}");
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            before = want;
+        }
     }
 
     /// Requests run concurrently: an unwatch that lands while the watch is still being set up
