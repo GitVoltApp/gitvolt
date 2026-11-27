@@ -19,11 +19,10 @@ export interface IntegrateRun { ff(y: string): void; go(kind: IntegrateKind, y: 
 
 /**
  * The Integrate group for a branch label chip `Y`, with HEAD on `X`: Fast-forward Y
- * to X (Y local), Merge Y into X, Rebase X onto Y. Only what can apply shows: from the loaded
- * rows, a `Y` already in `X`'s history gets only the fast-forward (merging it or rebasing onto
- * it is a no-op), and any other `Y` only the merge and the rebase (it isn't behind `X`); a `Y`
- * checked out in a worktree can't be fast-forwarded. When the rows can't tell (a commit not
- * loaded), all three show and the backend checks after the click (menus stay synchronous).
+ * to X (Y local), Merge Y into X, Merge Y into X with a merge commit, Rebase X onto Y.
+ * If X can fast-forward to Y, that replaces the ordinary merge. If Y is already in X's
+ * history, only Fast-forward Y to X applies, unless Y is checked out in a worktree.
+ * When ancestry is unknown, the backend checks after the click (menus stay synchronous).
  * Greyed with `busy` during another merge or rebase, or on a detached HEAD.
  */
 export function integrateRows(t: CommitTarget, env: Pick<MenuEnv, 'headBranch'> & Partial<Pick<MenuEnv, 'headSha' | 'isAncestor' | 'sidebar'>>, busy: string | null, run: IntegrateRun = { ff: () => {}, go: () => {} }): MenuRow[] {
@@ -41,23 +40,24 @@ export function integrateRows(t: CommitTarget, env: Pick<MenuEnv, 'headBranch'> 
   const rows: MenuRow[] = [];
   if (local && inX !== false && t.sha !== env.headSha && !checkedOut) rows.push({ kind: 'action', id: 'integrate.ff', label: `Fast-forward ${local} to ${x}`, icon: FastForward, tooltip: `Move ${local} up to ${x}`, run: () => run.ff(local), disabledReason });
   if (inX === true) return rows;
-  // X in Y's history: the merge only moves X forward. Labelled so, it runs `--ff-only`, so the label and the result agree whatever `merge.ff` says.
+  // X in Y's history: the fast-forward runs `--ff-only`, so its label and result agree whatever `merge.ff` says.
   const ff = !!env.headSha && t.sha !== env.headSha && env.isAncestor?.(env.headSha, t.sha) === true;
   rows.push(ff
     ? { kind: 'action', id: 'integrate.merge', label: `Fast-forward ${x} to ${target}`, icon: FastForward, tooltip: `Moves ${x} up to ${target}; no merge commit is made`, run: () => run.go('merge', target, true), disabledReason }
     : { kind: 'action', id: 'integrate.merge', label: `Merge ${target} into ${x}`, icon: GitMerge, tooltip: `git merge ${target} on ${x}`, run: () => run.go('merge', target), disabledReason });
+  if (t.sha !== env.headSha) rows.push({ kind: 'action', id: 'integrate.mergeCommit', label: `Merge ${target} into ${x} (create merge commit)`, icon: GitMerge, tooltip: `Create a merge commit on ${x} with ${target} as its second parent`, run: () => run.go('mergeCommit', target), disabledReason });
   rows.push({ kind: 'action', id: 'integrate.rebase', label: `Rebase ${x} onto ${target}`, icon: GitPullRequestArrow, tooltip: `git rebase ${target} on ${x}`, run: () => run.go('rebase', target), disabledReason });
   return rows;
 }
 
 function toastOutcome(o: IntegrateOutcome, kind: IntegrateKind, target: string, x: string): void {
   const show = (m: string) => useToast.getState().show(m);
-  if (o.status === 'upToDate') return show(kind === 'merge' ? `${target} is already merged into ${x}` : `${x} is up to date`);
+  if (o.status === 'upToDate') return show(kind === 'rebase' ? `${x} is up to date` : `${target} is already merged into ${x}`);
   // Stopped: the banner takes over: one without a conflict says why (the signer).
   if (o.status === 'stopped') return toastRebaseOutcome(o);
   if (o.status !== 'done') return; // aborted: nothing to say
   if (o.fastForward) return show(`Fast-forwarded ${x} to ${target}`);
-  show(kind === 'merge' ? `Merged ${target} into ${x}` : `Rebased ${x} onto ${target}`);
+  show(kind === 'rebase' ? `Rebased ${x} onto ${target}` : `Merged ${target} into ${x}`);
 }
 
 /** Merge or rebase: the preview first; it asks only for predicted conflicts, a stack (rebase) or
@@ -72,7 +72,7 @@ export async function startIntegrate(ctx: WriteCtx, kind: IntegrateKind, target:
   let updateRefs: boolean | undefined;
   try {
     const p = await api.integratePreview(ctx.repoId, ctx.worktree, kind, target);
-    if (kind === 'merge' && p.merged) {
+    if (!rebase && p.merged) {
       release();
       return void useToast.getState().show(`${target} is already merged into ${x}`);
     }

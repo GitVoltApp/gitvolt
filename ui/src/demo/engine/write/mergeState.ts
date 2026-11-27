@@ -45,10 +45,10 @@ export const withConflicts = (message: string, conflicts: string[]): string => `
 
 /** A merge stopped on conflicts: its files, as git leaves them (`autoMerge`: the tree of the result
  *  with its conflict markers, AUTO_MERGE). */
-export function writeMergeState(wt: WriteWt, s: { mergeHead: string; message: string; conflicts: string[]; autoMerge?: string }): void {
+export function writeMergeState(wt: WriteWt, s: { mergeHead: string; message: string; conflicts: string[]; noFf: boolean; autoMerge?: string }): void {
   wt.fs.writeFileSync(`${wt.gitdir}/MERGE_HEAD`, `${s.mergeHead}\n`);
   wt.fs.writeFileSync(`${wt.gitdir}/MERGE_MSG`, withConflicts(s.message, s.conflicts));
-  wt.fs.writeFileSync(`${wt.gitdir}/MERGE_MODE`, '');
+  wt.fs.writeFileSync(`${wt.gitdir}/MERGE_MODE`, s.noFf ? 'no-ff' : '');
   if (s.autoMerge !== undefined) wt.fs.writeFileSync(`${wt.gitdir}/AUTO_MERGE`, `${s.autoMerge}\n`);
 }
 

@@ -12,7 +12,7 @@ import { integrateRows, startIntegrate } from './integrate';
 
 /**
  * The menu of a local branch chip A dropped on another, B: it acts on B, as the right-click
- * Integrate rows of A's chip do with B checked out. Merge A into B (or Fast-forward B to A),
+ * Integrate rows of A's chip do with B checked out. Merge A into B, Fast-forward B to A when possible,
  * Rebase B onto A, Interactive rebase B onto A. "Fast-forward A to B" is left out: it moves A,
  * the dragged branch. When A is already in B, the merge row stays, greyed, so a drop never looks
  * like it did nothing.

@@ -11,7 +11,7 @@ import { listFiles, MODE_GITLINK, type FileEntry } from '../engine/read/trees';
 import { checkoutEntry, kind, readFileState, removeWorktreePath } from '../engine/write/files';
 import { loadIndex, saveIndex, stage0Of, unmergedOf, type IndexEntry } from '../engine/write/index';
 import { rebaseIntegrate } from '../engine/seq/rebase';
-import { runMerge } from '../engine/write/mergeRun';
+import { runMerge, type MergeMode } from '../engine/write/mergeRun';
 import { clearMergeState } from '../engine/write/mergeState';
 import { clearFolder, ignoredPath } from '../engine/write/move';
 import { readHead, shortRef } from '../engine/write/refs';
@@ -20,7 +20,7 @@ import { writeTarget, type WriteWt } from '../engine/write/seam';
 import { othersUnder } from '../engine/write/snapshot';
 import { NO_EXPECT } from './stage';
 
-function merge(target: string, seen: string, ffOnly: boolean, confirmAutostash: boolean): WriteIntent<IntegrateOutcome> {
+function merge(target: string, seen: string, mode: MergeMode, confirmAutostash: boolean): WriteIntent<IntegrateOutcome> {
   const short = shortRef(target);
   let label = `merge ${short} into ${seen}`;
   return {
@@ -35,7 +35,7 @@ function merge(target: string, seen: string, ffOnly: boolean, confirmAutostash: 
       const theirs = await revParse(pre.wt.repo, target, pre.wt.root);
       return { autostash: { rule: { kind: 'merged' }, target: theirs, op: `merge ${target}`, targetName: target } };
     },
-    run: (cx) => runMerge(cx, target, target, ffOnly),
+    run: (cx) => runMerge(cx, target, target, mode),
   };
 }
 
@@ -113,7 +113,8 @@ export const mergeHandlers: Pick<HandlerTable, 'integrate' | 'mergeAbort'> = {
     } catch {
       // runWrite refuses an unknown worktree itself.
     }
-    return runWrite(ctx, repo, worktree, expect, merge(target, seen, ffOnly === true, confirm.autostash));
+    const mode = kind === 'mergeCommit' ? 'noFf' : ffOnly ? 'ffOnly' : 'default';
+    return runWrite(ctx, repo, worktree, expect, merge(target, seen, mode, confirm.autostash));
   },
   mergeAbort: async ({ repo, worktree }, ctx) => runWrite(ctx, repo, worktree, NO_EXPECT, mergeAbort()),
 };

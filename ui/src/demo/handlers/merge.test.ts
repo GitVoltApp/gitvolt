@@ -63,6 +63,18 @@ describe('merge', () => {
     expect([r.outcome, readHead(wt), r.journal.undo?.label]).toEqual([{ status: 'done', commits: 1, fastForward: true }, { branch: 'behind', oid: feature }, 'merge feature into behind']);
   });
 
+  it('keeps both parents when an explicit merge commit could have been a fast-forward', async () => {
+    const { t, base, feature, ctx, wt } = await repo(false);
+    await t.branch('behind', base);
+    await t.checkout('behind');
+    setHead(wt, { branch: 'behind' });
+    const go = () => mergeHandlers.integrate({ repo: 1, worktree: t.dir, kind: 'mergeCommit', target: 'feature', expect: NO, confirm: CONFIRM }, ctx);
+    const r = await go();
+    expect(r.outcome).toEqual({ status: 'done', commits: 2, fastForward: false });
+    expect((await readCommit(t.repo, readHead(wt).oid!)).parents).toEqual([base, feature]);
+    expect((await go()).outcome).toEqual({ status: 'upToDate' });
+  });
+
   it('stops on a conflict with the merge files, markers and a paused entry, and Commit completes it', async () => {
     const { t, feature, main, ctx } = await repo(true);
     const r = await merge(ctx, t.dir, 'feature');

@@ -70,7 +70,7 @@ test.describe('integrate', () => {
     await labelMenu(page, 'feature/x', 'Merge feature/x into main');
     await expect(page.getByRole('menuitem', { name: 'Click again to merge feature/x (conflicts in 3 files)' })).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('menuitem', { name: 'Merge feature/x into main' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Merge feature/x into main', exact: true })).toBeVisible();
     expect(git(repo, 'status', '--porcelain')).toBe('');
     await page.keyboard.press('Escape');
     // The same app boot: clean adds clean.txt off Base.

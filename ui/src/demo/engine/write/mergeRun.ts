@@ -1,4 +1,4 @@
-// `git merge --no-edit <target>` (`--ff-only`) as the demo does it (write/integrate.rs's `run_merge`),
+// `git merge` as the demo does it (write/integrate.rs's `run_merge`),
 // written from git's behaviour and checked against the git binary: up to date, a fast-forward (the
 // two-way move), or Task 14's tree merge written into the worktree and the index, then a merge commit
 // as the visitor or a stop on conflicts with the merge files. Not here (nothing in the demo has
@@ -104,29 +104,32 @@ export async function refuseIndexFor(wt: WriteWt, how: PickRefusal): Promise<voi
  *  --ff-only`, which leaves `state` out (sync.rs). */
 export const MERGE_KINDS: readonly ChangeKind[] = ['worktree', 'index', 'refs', 'state'];
 
+export type MergeMode = 'default' | 'ffOnly' | 'noFf';
+
 /** The merge of `target` into HEAD's branch (the core's `run_merge`). A stop on conflicts pauses
  *  with `label` as the banner's target and MERGE_HEAD as its oid. */
-export async function runMerge(cx: WriteCx, target: string, label: string, ffOnly: boolean, kinds: readonly ChangeKind[] = MERGE_KINDS): Promise<IntegrateOutcome> {
+export async function runMerge(cx: WriteCx, target: string, label: string, mode: MergeMode, kinds: readonly ChangeKind[] = MERGE_KINDS): Promise<IntegrateOutcome> {
   const wt = cx.wt;
   const theirs = await revParse(wt.repo, target, wt.root);
   const branch = cx.before.head.branch!;
   const name = `refs/heads/${branch}`;
   const head = cx.before.head.oid;
   for (const k of kinds) cx.touch(k);
-  cx.command('merge', ffOnly ? '--ff-only' : '--no-edit', target);
+  const options = { default: ['--no-edit'], ffOnly: ['--ff-only'], noFf: ['--no-ff', '--no-squash', '--commit', '--no-edit'] };
+  cx.command('merge', ...options[mode], target);
   // The core reads HEAD's commit before it runs git: an unborn branch fails there.
   if (head === null) fail('Other', `Branch '${name}' does not have any commits`);
   await refuseUnmerged(wt);
   // git writes ORIG_HEAD once the index is merged, whatever follows (up to date, a refusal).
   writeOrigHead(wt, head);
   if ((await ancestors(wt.repo, head)).has(theirs)) return { status: 'upToDate' };
-  if ((await ancestors(wt.repo, theirs)).has(head)) {
+  if (mode !== 'noFf' && (await ancestors(wt.repo, theirs)).has(head)) {
     await twoWayMove(wt, head, theirs, 'merge');
     cx.cas([{ name, old: head, new: theirs }]);
     const [commits] = await relation(wt.repo, theirs, head);
     return { status: 'done', commits, fastForward: true };
   }
-  if (ffOnly) {
+  if (mode === 'ffOnly') {
     const message = 'Not possible to fast-forward, aborting.';
     const hint = ["Diverging branches can't be fast-forwarded, you need to either:", '', '\tgit merge --no-ff', '', 'or:', '', '\tgit rebase', '', 'Disable this message with "git config set advice.diverging false"'];
     throw gitFailure(message, `${hint.map((l) => (l === '' ? 'hint:\n' : `hint: ${l}\n`)).join('')}fatal: ${message}\n`);
@@ -139,7 +142,7 @@ export async function runMerge(cx: WriteCx, target: string, label: string, ffOnl
   await applyMerge(wt, m);
   const message = await mergeMessage(wt, target, branch);
   if (m.conflicts.length > 0) {
-    writeMergeState(wt, { mergeHead: theirs, message, conflicts: m.conflicts, autoMerge: await resultTree(wt.repo, m) });
+    writeMergeState(wt, { mergeHead: theirs, message, conflicts: m.conflicts, noFf: mode === 'noFf', autoMerge: await resultTree(wt.repo, m) });
     cx.paused = { kind: 'merge', target: label, targetOid: theirs, picked: [], irebase: null };
     // As the core counts them (`in_progress::read`): the index's conflicted paths.
     return { status: 'stopped', kind: 'merge', files: unmergedOf(await loadIndex(wt)).size };
