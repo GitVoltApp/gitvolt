@@ -21,7 +21,7 @@ const label = (name: string, r: number, extra: Partial<RefLabel> = {}): RefLabel
 /** feature/x's tip is `x`, main's `m`. */
 const X: DroppedLabel = { row: row('x'), label: label('feature/x', 1) };
 const MAIN: DroppedLabel = { row: row('m'), label: label('main', 0, { isHead: true, checkedOut: '/r' }) };
-const MERGE_ROWS = ['Merge feature/x into main', 'Merge feature/x into main (create merge commit)', 'Rebase main onto feature/x', 'Interactive rebase main onto feature/x'];
+const MERGE_ROWS = ['Merge feature/x into main', 'Rebase main onto feature/x', 'Interactive rebase main onto feature/x'];
 const env = (over: Partial<MenuEnv> = {}) => ({ headBranch: 'main', headSha: 'm', write: ctx, inProgress: null, isAncestor: () => false, sidebar: null, activeWorktree: '/r', worktreeShown: (p: string) => p, ...over }) as MenuEnv;
 const labels = (rows: MenuRow[]) => rows.map((r) => (r.kind === 'action' ? `${r.label}${r.disabledReason ? ` [${r.disabledReason}]` : ''}` : '---'));
 const run = (rows: MenuRow[], name: string) => {
@@ -33,13 +33,13 @@ const run = (rows: MenuRow[], name: string) => {
 beforeEach(() => vi.clearAllMocks());
 
 describe('the branch drop menu', () => {
-  it('B checked out: offers both merges when diverged or ancestry is unknown', () => {
+  it('B checked out: offers one merge when diverged or ancestry is unknown', () => {
     expect(labels(branchDropRows(X, MAIN, env()))).toEqual(MERGE_ROWS);
     expect(labels(branchDropRows(X, MAIN, env({ isAncestor: () => null })))).toEqual(MERGE_ROWS);
   });
 
   it('B behind A: the fast-forward of B first, never a fast-forward of A', () => {
-    expect(labels(branchDropRows(X, MAIN, env({ isAncestor: (a, b) => a === 'm' && b === 'x' })))).toEqual(['Fast-forward main to feature/x', 'Merge feature/x into main (create merge commit)', 'Rebase main onto feature/x']);
+    expect(labels(branchDropRows(X, MAIN, env({ isAncestor: (a, b) => a === 'm' && b === 'x' })))).toEqual(['Fast-forward main to feature/x', 'Merge feature/x into main', 'Rebase main onto feature/x']);
   });
 
   it("A already in B: a greyed merge row says so, the interactive rebase stays unless A is on B's commit", () => {
@@ -124,7 +124,7 @@ describe('the branch drop menu', () => {
 
     it('B behind A: Fast-forward main to feature/x checks out, then merges --ff-only', async () => {
       const rows = branchDropRows(X, main, onX({ isAncestor: (a, b) => a === 'm' && b === 'x' }));
-      expect(labels(rows)).toEqual(['Fast-forward main to feature/x', 'Merge feature/x into main (create merge commit)', 'Rebase main onto feature/x']);
+      expect(labels(rows)).toEqual(['Fast-forward main to feature/x', 'Merge feature/x into main', 'Rebase main onto feature/x']);
       run(rows, 'Fast-forward main to feature/x');
       await vi.waitFor(() => expect(startIntegrate).toHaveBeenCalledWith(ctx, 'merge', 'feature/x', 'main', true));
       expect(checkout).toHaveBeenCalledOnce();
@@ -132,7 +132,7 @@ describe('the branch drop menu', () => {
 
     it('checks out the destination before creating a merge commit', async () => {
       const rows = branchDropRows(X, main, onX({ isAncestor: (a, b) => a === 'm' && b === 'x' }));
-      run(rows, 'Merge feature/x into main (create merge commit)');
+      run(rows, 'Merge feature/x into main');
       await vi.waitFor(() => expect(startIntegrate).toHaveBeenCalledWith(ctx, 'mergeCommit', 'feature/x', 'main', undefined));
       expect(checkout).toHaveBeenCalledWith(ctx, { kind: 'branch', name: 'main' }, { head: 'x', refs: { 'refs/heads/main': 'm' } });
       expect(vi.mocked(checkout).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(startIntegrate).mock.invocationCallOrder[0]);

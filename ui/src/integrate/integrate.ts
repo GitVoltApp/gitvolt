@@ -19,10 +19,10 @@ export interface IntegrateRun { ff(y: string): void; go(kind: IntegrateKind, y: 
 
 /**
  * The Integrate group for a branch label chip `Y`, with HEAD on `X`: Fast-forward Y
- * to X (Y local), Merge Y into X, Merge Y into X with a merge commit, Rebase X onto Y.
- * If X can fast-forward to Y, that replaces the ordinary merge. If Y is already in X's
- * history, only Fast-forward Y to X applies, unless Y is checked out in a worktree.
- * When ancestry is unknown, the backend checks after the click (menus stay synchronous).
+ * to X (Y local), Fast-forward X to Y when possible, Merge Y into X, Rebase X onto Y.
+ * If Y is already in X's history, only Fast-forward Y to X applies, unless Y is checked
+ * out in a worktree. Merge creates a commit when a fast-forward is possible or ancestry
+ * is unknown. With diverged branches it uses git's ordinary merge behavior.
  * Greyed with `busy` during another merge or rebase, or on a detached HEAD.
  */
 export function integrateRows(t: CommitTarget, env: Pick<MenuEnv, 'headBranch'> & Partial<Pick<MenuEnv, 'headSha' | 'isAncestor' | 'sidebar'>>, busy: string | null, run: IntegrateRun = { ff: () => {}, go: () => {} }): MenuRow[] {
@@ -41,11 +41,10 @@ export function integrateRows(t: CommitTarget, env: Pick<MenuEnv, 'headBranch'> 
   if (local && inX !== false && t.sha !== env.headSha && !checkedOut) rows.push({ kind: 'action', id: 'integrate.ff', label: `Fast-forward ${local} to ${x}`, icon: FastForward, tooltip: `Move ${local} up to ${x}`, run: () => run.ff(local), disabledReason });
   if (inX === true) return rows;
   // X in Y's history: the fast-forward runs `--ff-only`, so its label and result agree whatever `merge.ff` says.
-  const ff = !!env.headSha && t.sha !== env.headSha && env.isAncestor?.(env.headSha, t.sha) === true;
-  rows.push(ff
-    ? { kind: 'action', id: 'integrate.merge', label: `Fast-forward ${x} to ${target}`, icon: FastForward, tooltip: `Moves ${x} up to ${target}; no merge commit is made`, run: () => run.go('merge', target, true), disabledReason }
-    : { kind: 'action', id: 'integrate.merge', label: `Merge ${target} into ${x}`, icon: GitMerge, tooltip: `git merge ${target} on ${x}`, run: () => run.go('merge', target), disabledReason });
-  if (t.sha !== env.headSha) rows.push({ kind: 'action', id: 'integrate.mergeCommit', label: `Merge ${target} into ${x} (create merge commit)`, icon: GitMerge, tooltip: `Create a merge commit on ${x} with ${target} as its second parent`, run: () => run.go('mergeCommit', target), disabledReason });
+  const inY = env.headSha ? env.isAncestor?.(env.headSha, t.sha) ?? null : null;
+  if (inY === true && t.sha !== env.headSha) rows.push({ kind: 'action', id: 'integrate.ffOnly', label: `Fast-forward ${x} to ${target}`, icon: FastForward, tooltip: `Moves ${x} up to ${target}; no merge commit is made`, run: () => run.go('merge', target, true), disabledReason });
+  const mergeCommit = inY !== false;
+  rows.push({ kind: 'action', id: 'integrate.merge', label: `Merge ${target} into ${x}`, icon: GitMerge, tooltip: mergeCommit ? `Create a merge commit on ${x} with ${target} as its second parent` : `git merge ${target} on ${x}`, run: () => run.go(mergeCommit ? 'mergeCommit' : 'merge', target), disabledReason });
   rows.push({ kind: 'action', id: 'integrate.rebase', label: `Rebase ${x} onto ${target}`, icon: GitPullRequestArrow, tooltip: `git rebase ${target} on ${x}`, run: () => run.go('rebase', target), disabledReason });
   return rows;
 }
