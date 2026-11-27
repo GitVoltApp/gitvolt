@@ -28,8 +28,8 @@ describe('integrate', () => {
     const labels = (env: object) => integrateRows(remoteOnly, { headBranch: 'main', headSha: 'h', ...env } as never, null).map((r) => (r.kind === 'action' ? r.label : ''));
     // Diverged (each has commits the other doesn't).
     expect(labels({ isAncestor: () => false })).toEqual(['Merge origin/main into main', 'Rebase main onto origin/main']);
-    // Behind: the merge only moves main forward.
-    expect(labels({ isAncestor: (a: string, b: string) => a === 'h' && b === 'r' })).toEqual(['Fast-forward main to origin/main', 'Rebase main onto origin/main']);
+    // Behind: fast-forward and a merge commit are both available.
+    expect(labels({ isAncestor: (a: string, b: string) => a === 'h' && b === 'r' })).toEqual(['Fast-forward main to origin/main', 'Merge origin/main into main', 'Rebase main onto origin/main']);
     // Ahead (origin/main is in main's history): nothing to bring in.
     expect(labels({ isAncestor: (a: string, b: string) => a === 'r' && b === 'h' })).toEqual([]);
   });
@@ -41,7 +41,7 @@ describe('integrate', () => {
     expect(ids({ isAncestor: () => true })).toEqual(['integrate.ff']);
     // Not behind main (ahead or diverged): no fast-forward.
     expect(ids({ isAncestor: () => false })).toEqual(['integrate.merge', 'integrate.rebase']);
-    // Unknown (not loaded): all three, checked after the click.
+    // Unknown (not loaded): the backend checks after the click.
     expect(ids({ isAncestor: () => null })).toEqual(['integrate.ff', 'integrate.merge', 'integrate.rebase']);
     // Behind but checked out in a worktree: it can't be fast-forwarded in place.
     const sidebar = { locals: [{ fullName: 'refs/heads/feature/x', checkedOut: '/r-x' }] };
@@ -51,27 +51,51 @@ describe('integrate', () => {
     expect(integrateRows(remote, { headBranch: 'main', headSha: 'h', isAncestor: () => false } as never, null).map((r) => (r.kind === 'action' ? r.label : ''))).toEqual(['Merge origin/y into main', 'Rebase main onto origin/y']);
   });
 
-  it('labels the merge a fast-forward when HEAD is in the target\'s history, and then passes ff-only', async () => {
+  it('keeps the fast-forward action ff-only and merges diverged branches as before', async () => {
     const t = { sha: 'a', mrRefs: [], isWip: false, isStash: false, branch: { name: 'feature/x', local: 'refs/heads/feature/x', remotes: [] } };
-    const merge = (isAncestor: (a: string, b: string) => boolean | null) => {
+    const action = (id: string, isAncestor: (a: string, b: string) => boolean | null) => {
       const go = vi.fn();
-      const row = integrateRows(t, { headBranch: 'main', headSha: 'h', isAncestor } as never, null, { ff: () => {}, go }).find((r) => r.kind === 'action' && r.id === 'integrate.merge');
+      const row = integrateRows(t, { headBranch: 'main', headSha: 'h', isAncestor } as never, null, { ff: () => {}, go }).find((r) => r.kind === 'action' && r.id === id);
       return { row: row as Extract<typeof row, { kind: 'action' }>, go };
     };
-    const ffable = merge((a, b) => a === 'h' && b === 'a');
+    const ffable = action('integrate.ffOnly', (a, b) => a === 'h' && b === 'a');
     expect(ffable.row.label).toBe('Fast-forward main to feature/x');
     expect(ffable.row.tooltip).toMatch(/no merge commit/);
     ffable.row.run();
     expect(ffable.go).toHaveBeenCalledWith('merge', 'feature/x', true);
-    const diverged = merge(() => false);
+    const diverged = action('integrate.merge', () => false);
     expect(diverged.row.label).toBe('Merge feature/x into main');
     diverged.row.run();
     expect(diverged.go).toHaveBeenCalledWith('merge', 'feature/x');
-    expect(merge(() => null).row.label).toBe('Merge feature/x into main');
+    const unknown = action('integrate.merge', () => null);
+    expect(unknown.row.label).toBe('Merge feature/x into main');
+    unknown.row.run();
+    expect(unknown.go).toHaveBeenCalledWith('mergeCommit', 'feature/x');
     vi.spyOn(api, 'integratePreview').mockResolvedValue(preview({}));
     const send = vi.spyOn(api, 'integrate').mockResolvedValue(ok({ status: 'done', commits: 1, fastForward: true }) as never);
     await startIntegrate(ctx, 'merge', 'feature/x', 'main', true);
     expect(send.mock.calls[0][4]).toMatchObject({ ffOnly: true });
+  });
+
+  it('offers a merge commit alongside fast-forward and sends that choice through the write', async () => {
+    const t = { sha: 'a', mrRefs: [], isWip: false, isStash: false, branch: { name: 'feature/x', local: 'refs/heads/feature/x', remotes: [] } };
+    const go = vi.fn();
+    const rows = integrateRows(t, { headBranch: 'develop', headSha: 'h', isAncestor: (a, b) => a === 'h' && b === 'a' }, null, { ff: () => {}, go });
+    const merge = rows.find((r) => r.kind === 'action' && r.id === 'integrate.merge');
+    if (merge?.kind !== 'action') throw new Error('Missing merge commit action');
+    expect(merge.label).toBe('Merge feature/x into develop');
+    expect(merge.tooltip).toContain('Create a merge commit');
+    merge.run();
+    expect(go).toHaveBeenCalledWith('mergeCommit', 'feature/x');
+
+    const predict = vi.spyOn(api, 'integratePreview').mockResolvedValue(preview({}));
+    const send = vi.spyOn(api, 'integrate').mockResolvedValue(ok({ status: 'done', commits: 2, fastForward: false }) as never);
+    await startIntegrate(ctx, 'mergeCommit', 'feature/x', 'develop');
+    expect(api.integratePreview).toHaveBeenCalledWith(1, '/r', 'mergeCommit', 'feature/x');
+    expect(send).toHaveBeenCalledWith(1, '/r', 'mergeCommit', 'feature/x', { confirmAutostash: false });
+    predict.mockResolvedValue(preview({ merged: true }));
+    await startIntegrate(ctx, 'mergeCommit', 'feature/x', 'develop');
+    expect(send).toHaveBeenCalledOnce();
   });
 
   it('a rebase with a stack arms the row with the checkbox under it, and sends its answer explicitly', async () => {

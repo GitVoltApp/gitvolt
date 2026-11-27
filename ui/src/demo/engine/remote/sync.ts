@@ -296,7 +296,7 @@ export function pullIntent(o: { branch: string; remote: string; merge: string; m
         result = { status: 'fastForward', commits: behind };
       } else if (ahead === 0) {
         // The core's own `git merge --ff-only` here, not `run_merge`: no `state` change.
-        await runMerge(cx, upstreamRef, upstream, true, ['worktree', 'index', 'refs']);
+        await runMerge(cx, upstreamRef, upstream, 'ffOnly', ['worktree', 'index', 'refs']);
         result = { status: 'fastForward', commits: behind };
       } else if (!checkedOut || o.mode === 'ffOnly') {
         result = { status: 'diverged', ahead, behind, conflicts: (await predictConflicts(cx.read, mine, theirs)).length };
@@ -306,7 +306,7 @@ export function pullIntent(o: { branch: string; remote: string; merge: string; m
           done = await rebase.run(cx);
           // The banner names the upstream as the user knows it.
           if (cx.paused) cx.paused = { ...cx.paused, target: upstream };
-        } else done = await runMerge(cx, upstreamRef, upstream, false);
+        } else done = await runMerge(cx, upstreamRef, upstream, 'default');
         result =
           done.status === 'stopped' ? { status: 'stopped', kind: done.kind, files: done.files, ...(done.warning ? { warning: done.warning } : {}) }
           : done.status === 'done' ? (o.mode === 'rebase' ? { status: 'rebased', commits: done.commits } : { status: 'merged', commits: done.commits })

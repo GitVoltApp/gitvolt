@@ -22,6 +22,7 @@ use ts_rs::TS;
 pub enum IntegrateKind {
     Rebase,
     Merge,
+    MergeCommit,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
@@ -243,9 +244,14 @@ pub(crate) async fn integrate(api: &Api, repo: u32, worktree: &str, kind: Integr
             let label = BranchLabel::new(seen, move |b| format!("rebase {b} onto {short}"));
             run_write(api, repo, worktree, expect, RebaseIntent { target, update_refs, fork_point: false, confirm, label, planned: Default::default() }).await
         }
-        IntegrateKind::Merge => {
+        IntegrateKind::Merge | IntegrateKind::MergeCommit => {
             let label = BranchLabel::new(seen, move |b| format!("merge {short} into {b}"));
-            run_write(api, repo, worktree, expect, MergeIntent { target, confirm, label, ff_only: ff_only == Some(true) }).await
+            let mode = match kind {
+                IntegrateKind::MergeCommit => MergeMode::NoFf,
+                _ if ff_only == Some(true) => MergeMode::FfOnly,
+                _ => MergeMode::Default,
+            };
+            run_write(api, repo, worktree, expect, MergeIntent { target, confirm, label, mode }).await
         }
     }
 }
@@ -257,11 +263,18 @@ pub(crate) fn relation(repo: &gix::Repository, a: ObjectId, b: ObjectId) -> Resu
     Ok((count(a, b)?, count(b, a)?))
 }
 
-pub(crate) struct MergeIntent {
-    pub target: String,
-    pub confirm: Confirm,
-    pub label: BranchLabel,
-    pub ff_only: bool,
+#[derive(Clone, Copy)]
+pub(crate) enum MergeMode {
+    Default,
+    FfOnly,
+    NoFf,
+}
+
+struct MergeIntent {
+    target: String,
+    confirm: Confirm,
+    label: BranchLabel,
+    mode: MergeMode,
 }
 
 impl WriteIntent for MergeIntent {
@@ -296,17 +309,21 @@ impl WriteIntent for MergeIntent {
         Ok(Plan { autostash: Some(AutostashSpec { rule, target: Some(target), op: format!("merge {}", self.target), target_name: Some(self.target.clone()), moved: None }), ..Plan::default() })
     }
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<IntegrateOutcome, GbError> {
-        run_merge(cx, &self.target, &self.target, self.ff_only).await
+        run_merge(cx, &self.target, &self.target, self.mode).await
     }
 }
 
-/// `git merge --no-edit <target>` (pull's merge). Stopped on conflicts, it pauses
+/// Merge into HEAD. Stopped on conflicts, it pauses
 /// with `label` as the banner's target, and `MERGE_HEAD` as the target's oid.
-pub(crate) async fn run_merge(cx: &mut WriteCx<'_>, target: &str, label: &str, ff_only: bool) -> Result<IntegrateOutcome, GbError> {
+pub(crate) async fn run_merge(cx: &mut WriteCx<'_>, target: &str, label: &str, mode: MergeMode) -> Result<IntegrateOutcome, GbError> {
     let repo = gix::open(cx.root).map_err(gix_err)?;
     let theirs = repo.rev_parse_single(target).map_err(gix_err)?.detach();
     let before = repo.head_id().map_err(gix_err)?.detach();
-    let inv = if ff_only { cx.git(["merge", "--ff-only", target]) } else { cx.git(["merge", "--no-edit", target]) };
+    let inv = match mode {
+        MergeMode::Default => cx.git(["merge", "--no-edit", target]),
+        MergeMode::FfOnly => cx.git(["merge", "--ff-only", target]),
+        MergeMode::NoFf => cx.git(["merge", "--no-ff", "--no-squash", "--commit", "--no-edit", target]),
+    };
     let res = cx.run_git(inv).await;
     for k in [ChangeKind::Worktree, ChangeKind::Index, ChangeKind::Refs, ChangeKind::State] {
         cx.touch(k);
@@ -576,6 +593,24 @@ pub(crate) mod tests {
         let res = merge(&api, id, r.path(), "feature/c").await.unwrap();
         assert_eq!(res["outcome"], serde_json::json!({"status": "done", "commits": 2, "fastForward": true}));
         assert_eq!(merge(&api, id, r.path(), "feature/b").await.unwrap()["outcome"]["status"], "upToDate");
+    }
+
+    #[tokio::test]
+    async fn an_explicit_merge_commit_keeps_both_parents_when_git_could_fast_forward() {
+        let r = TestRepo::new();
+        fixtures::stack(&r);
+        r.switch("feature/a");
+        r.git(&["config", "merge.ff", "only"]);
+        r.git(&["config", "branch.feature/a.mergeOptions", "--squash --no-commit"]);
+        let before = r.git(&["rev-parse", "HEAD"]);
+        let source = r.git(&["rev-parse", "feature/c"]);
+        let (api, _data) = api();
+        let id = open(&api, r.path()).await;
+        let go = || Request::Integrate { repo: id, worktree: wt(r.path()), kind: IntegrateKind::MergeCommit, target: "feature/c".into(), update_refs: None, expect: Default::default(), ff_only: None, confirm: Default::default() };
+        let res = api.dispatch(go()).await.unwrap();
+        assert_eq!(res["outcome"], serde_json::json!({"status": "done", "commits": 3, "fastForward": false}));
+        assert_eq!(r.git(&["rev-parse", "HEAD^1", "HEAD^2", "feature/c"]), format!("{before}\n{source}\n{source}"));
+        assert_eq!(api.dispatch(go()).await.unwrap()["outcome"]["status"], "upToDate");
     }
 
     #[tokio::test]

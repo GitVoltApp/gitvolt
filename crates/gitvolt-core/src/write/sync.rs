@@ -467,7 +467,7 @@ impl WriteIntent for PullIntent {
                         }
                         out?
                     }
-                    _ => integrate::run_merge(cx, &self.upstream_ref, &self.upstream, false).await?,
+                    _ => integrate::run_merge(cx, &self.upstream_ref, &self.upstream, integrate::MergeMode::Default).await?,
                 };
                 match done {
                     IntegrateOutcome::Stopped { kind, files, warning } => PullResult::Stopped { kind, files, warning },

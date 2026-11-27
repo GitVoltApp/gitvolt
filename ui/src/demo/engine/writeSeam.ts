@@ -26,7 +26,7 @@ import { loadIndex } from './write/index';
 import { inProgressName as inProgressName3, type OpName } from './write/inProgress';
 import type { IrebasePause, UndoKind } from './write/journal';
 import { applyMerge as applyMerge3, mergeTrees as mergeTrees3, resultTree, type TreeMerge } from './write/mergeTrees';
-import { refuseIndexFor, refuseLocalChanges, runMerge as runMerge3, type PickRefusal } from './write/mergeRun';
+import { refuseIndexFor, refuseLocalChanges, runMerge as runMerge3, type MergeMode, type PickRefusal } from './write/mergeRun';
 import { writeOrigHead as writeOrigHead3 } from './write/mergeState';
 import { hardReset, twoWayMove } from './write/move';
 import { demoIdent, DEMO_IDENTITY, identLine, writeCommitObject as writeCommit3, writeIndexTree, writeTreeOf } from './write/objects';
@@ -343,8 +343,8 @@ export async function checkoutTree(cx: Pre, from: string, to: string, opts?: { f
 
 /** `git merge` of `target` into HEAD's branch (`--ff-only`); a stop on conflicts pauses the write.
  *  `kinds`: what it marks changed (the core's `run_merge` by default). */
-export function runMerge(cx: WriteCx, target: string, label: string, ffOnly: boolean, kinds?: readonly ChangeKind[]): Promise<IntegrateOutcome> {
-  return runMerge3(rawCx(cx), target, label, ffOnly, kinds);
+export function runMerge(cx: WriteCx, target: string, label: string, mode: MergeMode, kinds?: readonly ChangeKind[]): Promise<IntegrateOutcome> {
+  return runMerge3(rawCx(cx), target, label, mode, kinds);
 }
 
 /** The core's `remote_name_error` (the UI's twin), with no names taken. */
